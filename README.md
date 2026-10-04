@@ -102,7 +102,11 @@ We are building toward:
 
 ## Project Status
 
-Hyperspace 2.0 is under active development during StormHacks 2026. The features and technology above describe our intended implementation.
+Hyperspace 2.0 is under active development during StormHacks 2026.
+
+**Working now:** Poincaré disk (d3-hypertree), Euclid toggle, search (TiDB hybrid + local/demo fallback), focus card, Expand (Wikipedia + Gemini + cache), presentation mode (P), demo chips, `/api/health`.
+
+**Still open:** deploy polish, pitch video, live Expand demos against warm TiDB embeddings.
 
 ## Acknowledgments
 

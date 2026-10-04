@@ -1,0 +1,387 @@
+{
+  "700355": {
+    "parentId": 700355,
+    "children": [
+      {
+        "id": 797088,
+        "title": "Computer vision",
+        "summary": "Computer vision tasks include methods for acquiring, processing, analyzing, and understanding digital images, and extraction of high-dimensional data from the real world in order to produce numerical or symbolic information, e.g. in the form of decisions.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Computer_vision",
+        "type": "category"
+      },
+      {
+        "id": 706543,
+        "title": "Machine learning",
+        "summary": "Machine learning (ML) is a field of study in artificial intelligence concerned with the development and study of statistical algorithms that can learn from data and generalize to unseen data, and thus perform tasks without being explicitly programmed. Statistics and mathematical optimisation methods compose the foundations of machine learning.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Machine_learning",
+        "type": "category"
+      },
+      {
+        "id": 1532663,
+        "title": "Applications of artificial intelligence",
+        "summary": "Artificial intelligence (AI) and its subfields have been used in applications throughout industry and academia. Machine learning has been used for various scientific and commercial purposes, including language translation, image recognition, decision-making, credit scoring, and e-commerce.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Applications_of_artificial_intelligence",
+        "type": "category"
+      },
+      {
+        "id": 796635,
+        "title": "Knowledge representation",
+        "summary": "Topics in Knowledge representation, including Scientific models, Types of groupings, Belief revision.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Category:Knowledge_representation",
+        "type": "category"
+      },
+      {
+        "id": 853492,
+        "title": "Robotics",
+        "summary": "Robotics is the interdisciplinary study and practice of the design, construction, operation, and use of robots. A roboticist is someone who specializes in robotics.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Robotics",
+        "type": "category"
+      },
+      {
+        "id": 12069624,
+        "title": "Ambient intelligence",
+        "summary": "Ambient intelligence (AmI) refers to environments with electronic devices that are aware of and can recognize the presence of human beings and adapt accordingly. This concept encompasses various technologies in consumer electronics, telecommunications, and computing.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Ambient_intelligence",
+        "type": "category"
+      },
+      {
+        "id": 960021,
+        "title": "Natural language processing",
+        "summary": "Natural language processing (NLP) is the processing of natural language information by a computer. NLP is a subfield of computer science and is closely associated with artificial intelligence.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Natural_language_processing",
+        "type": "category"
+      },
+      {
+        "id": 14627437,
+        "title": "Philosophy of artificial intelligence",
+        "summary": "The philosophy of artificial intelligence is a branch of the philosophy of mind and the philosophy of computer science that explores artificial intelligence and its implications for knowledge and understanding of intelligence, ethics, consciousness, epistemology, and free will. Furthermore, the technology is concerned with the creation of artificial animals or artificial people (or, at least, artificial creatures; see artificial life), so the discipline is of considerable interest to philosophers.",
+        "parentId": 700355,
+        "depth": 1,
+        "url": "https://en.wikipedia.org/wiki/Philosophy_of_artificial_intelligence",
+        "type": "category"
+      }
+    ]
+  },
+  "706543": {
+    "parentId": 706543,
+    "children": [
+      {
+        "id": 42936114,
+        "title": "Artificial neural networks",
+        "summary": "Topics in Artificial neural networks, including Deep learning, Neural network architectures, Neural network (machine learning).",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Artificial_neural_networks",
+        "type": "category"
+      },
+      {
+        "id": 24059390,
+        "title": "Markov models",
+        "summary": "Topics in Markov models, including Markov processes, Kalman filter, Markov chain.",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Markov_models",
+        "type": "category"
+      },
+      {
+        "id": 33547387,
+        "title": "Applied machine learning",
+        "summary": "Topics in Applied machine learning, including AlphaGo, Deep learning software applications, Stockfish (chess).",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Applied_machine_learning",
+        "type": "category"
+      },
+      {
+        "id": 33547228,
+        "title": "Machine learning algorithms",
+        "summary": "Topics in Machine learning algorithms, including Genetic algorithms, Diffusion model, K-means clustering.",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Machine_learning_algorithms",
+        "type": "category"
+      },
+      {
+        "id": 33542714,
+        "title": "Data mining and machine learning software",
+        "summary": "Topics in Data mining and machine learning software, including Folding@home, Deep learning software, Julia (programming language).",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Data_mining_and_machine_learning_software",
+        "type": "category"
+      },
+      {
+        "id": 29549713,
+        "title": "Dimension reduction",
+        "summary": "Topics in Dimension reduction, including Factor analysis, Principal component analysis, Feature selection.",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Dimension_reduction",
+        "type": "category"
+      },
+      {
+        "id": 754055,
+        "title": "Evolutionary algorithms",
+        "summary": "Topics in Evolutionary algorithms, including Applications of evolutionary algorithms, Evolution strategy, Genetic programming.",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Evolutionary_algorithms",
+        "type": "category"
+      },
+      {
+        "id": 1991254,
+        "title": "Classification algorithms",
+        "summary": "Topics in Classification algorithms, including Decision trees, Types of artificial neural networks, Ensemble learning.",
+        "parentId": 706543,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Classification_algorithms",
+        "type": "category"
+      }
+    ]
+  },
+  "797088": {
+    "parentId": 797088,
+    "children": [
+      {
+        "id": 962413,
+        "title": "Image processing",
+        "summary": "Topics in Image processing, including Color, Medical imaging, Graphics file formats.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Image_processing",
+        "type": "category"
+      },
+      {
+        "id": 4826208,
+        "title": "Applications of computer vision",
+        "summary": "Topics in Applications of computer vision, including Augmented reality, Remote sensing, Gesture recognition.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Applications_of_computer_vision",
+        "type": "category"
+      },
+      {
+        "id": 2700744,
+        "title": "3D imaging",
+        "summary": "Topics in 3D imaging, including Stereoscopy, Holography, Three-dimensional coordinate systems.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:3D_imaging",
+        "type": "category"
+      },
+      {
+        "id": 43515647,
+        "title": "Feature detection (computer vision)",
+        "summary": "Topics in Feature detection (computer vision), including Edge detection, Scale-invariant feature transform, Corner detection.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Feature_detection_(computer_vision)",
+        "type": "category"
+      },
+      {
+        "id": 16147934,
+        "title": "Photogrammetry",
+        "summary": "Photogrammetry is the science and technology of obtaining reliable information about physical objects and the environment through the process of recording, measuring and interpreting photographic images and patterns of electromagnetic radiant imagery and other phenomena. While the invention of the method is attributed to Aimé Laussedat, the term \"photogrammetry\" was coined by the German architect Albrecht Meydenbauer, which appeared in his 1867 article \"Die Photometrographie.\" There are many variants of photogrammetry.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Photogrammetry",
+        "type": "category"
+      },
+      {
+        "id": 12766413,
+        "title": "Motion in computer vision",
+        "summary": "Topics in Motion in computer vision, including Motion capture, Optical flow, Match moving.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Motion_in_computer_vision",
+        "type": "category"
+      },
+      {
+        "id": 39548653,
+        "title": "Image segmentation",
+        "summary": "In digital image processing and computer vision, image segmentation is the process of partitioning a digital image into multiple image segments, also known as image regions or image objects (sets of pixels). The goal of segmentation is to simplify and/or change the representation of an image into something that is more meaningful and easier to analyze.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Image_segmentation",
+        "type": "category"
+      },
+      {
+        "id": 5910361,
+        "title": "Digital geometry",
+        "summary": "Digital geometry deals with discrete sets (usually discrete point sets) considered to be digitized models or images of objects of the 2D or 3D Euclidean space. Simply put, digitizing is replacing an object by a discrete set of its points.",
+        "parentId": 797088,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Digital_geometry",
+        "type": "category"
+      }
+    ]
+  },
+  "853492": {
+    "parentId": 853492,
+    "children": [
+      {
+        "id": 943048,
+        "title": "Robots",
+        "summary": "Topics in Robots, including Military robots, Humanoid robots, Uncrewed vehicles.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Robots",
+        "type": "category"
+      },
+      {
+        "id": 40512224,
+        "title": "Self-driving cars",
+        "summary": "Topics in Self-driving cars, including Assured clear distance ahead, DARPA Grand Challenge, Self-driving car.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Self-driving_cars",
+        "type": "category"
+      },
+      {
+        "id": 33638169,
+        "title": "Industrial robotics",
+        "summary": "Topics in Industrial robotics, including 3D printing, Numerical control, Exoskeleton (human).",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Industrial_robotics",
+        "type": "category"
+      },
+      {
+        "id": 33610958,
+        "title": "Robot control",
+        "summary": "Robotic control is the system that contributes to the movement of robots. This involves the mechanical aspects and programmable systems that make it possible to control robots.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Robot_control",
+        "type": "category"
+      },
+      {
+        "id": 78414022,
+        "title": "Robotics engineering",
+        "summary": "Robotics engineering is a branch of engineering that focuses on the conception, design, manufacturing, and operation of robots. It involves a multidisciplinary approach, drawing primarily from mechanical, electrical, software, and artificial intelligence (AI) engineering.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Robotics_engineering",
+        "type": "category"
+      },
+      {
+        "id": 32218399,
+        "title": "Robotics software",
+        "summary": "Topics in Robotics software, including Robot programming languages, Robotics suites, Robot operating systems.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Robotics_software",
+        "type": "category"
+      },
+      {
+        "id": 17612277,
+        "title": "Multi-robot systems",
+        "summary": "Topics in Multi-robot systems, including Collective intelligence, Swarm robotics, Swarm robotic platforms.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Multi-robot_systems",
+        "type": "category"
+      },
+      {
+        "id": 13320449,
+        "title": "Robotic art",
+        "summary": "Robotic art is any artwork that employs some form of robotic or automated technology. There are many branches of robotic art, one of which is robotic installation art, a type of installation art that is programmed to respond to viewer interactions, by means of computers, sensors and actuators.",
+        "parentId": 853492,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Robotic_art",
+        "type": "category"
+      }
+    ]
+  },
+  "960021": {
+    "parentId": 960021,
+    "children": [
+      {
+        "id": 958652,
+        "title": "Speech recognition",
+        "summary": "Speech recognition (automatic speech recognition (ASR), computer speech recognition, or speech-to-text (STT)) is a sub-field of computational linguistics concerned with methods and technologies that translate spoken language into text or other interpretable forms. Speech recognition applications include voice user interfaces, where the user speaks to a device, which \"listens\" and processes the audio.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Speech_recognition",
+        "type": "category"
+      },
+      {
+        "id": 27538192,
+        "title": "Natural language processing software",
+        "summary": "Topics in Natural language processing software, including Google Translate, IBM Watson, Siri.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Natural_language_processing_software",
+        "type": "category"
+      },
+      {
+        "id": 3679023,
+        "title": "Corpus linguistics",
+        "summary": "Corpus linguistics is an empirical method for the study of language by text corpus (plural corpora). Corpora are balanced, often stratified collections of authentic, \"real world\", text of speech or writing that aim to represent a given linguistic variety.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Corpus_linguistics",
+        "type": "category"
+      },
+      {
+        "id": 3345092,
+        "title": "Optical character recognition",
+        "summary": "Optical character recognition (OCR) or optical character reader is the electronic or mechanical conversion of images of typed, handwritten or printed text into machine-encoded text, whether from a scanned document, a photo of a document, a scene photo (for example the text on signs and billboards in a landscape photo) or from subtitle text superimposed on an image (for example: from a television broadcast). Widely used as a form of data entry from printed paper data records – whether passport documents, invoices, bank statements, computerized receipts, business cards, mail, printed data, or any suitable documentation – it is a common method of digitizing printed texts so that they can be electronically edited, searched, stored more compactly, displayed online, and used in machine processes such as cognitive computing, machine translation, (extracted) text-to-speech, key data and text mining.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Optical_character_recognition",
+        "type": "category"
+      },
+      {
+        "id": 48322243,
+        "title": "Finite-state machines",
+        "summary": "Topics in Finite-state machines, including Suffix automaton, Finite-state machine, UML state machine.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Finite-state_machines",
+        "type": "category"
+      },
+      {
+        "id": 1019150,
+        "title": "Machine translation",
+        "summary": "Machine translation is the use of computational techniques to translate text or speech from one language to another, including the contextual, idiomatic, and pragmatic nuances of both languages. While some language models are capable of generating comprehensible results, machine translation tools remain limited by the complexity of language and emotion, often lacking depth and semantic precision.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Machine_translation",
+        "type": "category"
+      },
+      {
+        "id": 40640752,
+        "title": "Tasks of natural language processing",
+        "summary": "Topics in Tasks of natural language processing, including Natural language parsing, Sentiment analysis, Semantic parsing.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Category:Tasks_of_natural_language_processing",
+        "type": "category"
+      },
+      {
+        "id": 73248112,
+        "title": "Large language model",
+        "summary": "A large language model (LLM) is an AI model (typically a neural network) trained on a vast amount of text for natural language processing tasks, especially language generation. LLMs can typically generate, summarize, translate, and analyze text in many contexts.",
+        "parentId": 960021,
+        "depth": 2,
+        "url": "https://en.wikipedia.org/wiki/Large_language_model",
+        "type": "article"
+      }
+    ]
+  }
+}

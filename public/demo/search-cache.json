@@ -1,0 +1,1304 @@
+{
+  "machine learning": {
+    "matches": [
+      {
+        "id": 706543,
+        "title": "Machine learning",
+        "score": 1,
+        "path": [
+          700355,
+          706543
+        ]
+      },
+      {
+        "id": 33547228,
+        "title": "Machine learning algorithms",
+        "score": 0.9,
+        "path": [
+          700355,
+          706543,
+          33547228
+        ]
+      },
+      {
+        "id": 53970843,
+        "title": "Machine learning in bioinformatics",
+        "score": 0.9,
+        "path": [
+          700355,
+          706543,
+          53970843
+        ]
+      },
+      {
+        "id": 33547387,
+        "title": "Applied machine learning",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          33547387
+        ]
+      },
+      {
+        "id": 33542714,
+        "title": "Data mining and machine learning software",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          33542714
+        ]
+      },
+      {
+        "id": 45049676,
+        "title": "Adversarial machine learning",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          45049676
+        ]
+      },
+      {
+        "id": 44108758,
+        "title": "Quantum machine learning",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          44108758
+        ]
+      },
+      {
+        "id": 62683332,
+        "title": "Fairness (machine learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          62683332
+        ]
+      },
+      {
+        "id": 27669989,
+        "title": "Ensemble averaging (machine learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          78388172,
+          27669989
+        ]
+      },
+      {
+        "id": 21523,
+        "title": "Neural network (machine learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          21523
+        ]
+      },
+      {
+        "id": 42571226,
+        "title": "Torch (machine learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          33542714,
+          71710609,
+          42571226
+        ]
+      },
+      {
+        "id": 1532663,
+        "title": "Applications of artificial intelligence",
+        "score": 0.45,
+        "path": [
+          700355,
+          1532663
+        ]
+      }
+    ],
+    "focusNodeId": 706543
+  },
+  "robotics": {
+    "matches": [
+      {
+        "id": 853492,
+        "title": "Robotics",
+        "score": 1,
+        "path": [
+          700355,
+          853492
+        ]
+      },
+      {
+        "id": 78414022,
+        "title": "Robotics engineering",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          78414022
+        ]
+      },
+      {
+        "id": 32218399,
+        "title": "Robotics software",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          32218399
+        ]
+      },
+      {
+        "id": 33573734,
+        "title": "Robotics projects",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          33573734
+        ]
+      },
+      {
+        "id": 33574092,
+        "title": "Robotics hardware",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          78414022,
+          33574092
+        ]
+      },
+      {
+        "id": 10616147,
+        "title": "Robotics suites",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          32218399,
+          10616147
+        ]
+      },
+      {
+        "id": 21295680,
+        "title": "Robotics middleware",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          32218399,
+          21295680
+        ]
+      },
+      {
+        "id": 15513890,
+        "title": "Robotics simulator",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          32218399,
+          10616147,
+          15513890
+        ]
+      },
+      {
+        "id": 10366375,
+        "title": "Robotics suite",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          32218399,
+          10616147,
+          10366375
+        ]
+      },
+      {
+        "id": 33638169,
+        "title": "Industrial robotics",
+        "score": 0.75,
+        "path": [
+          700355,
+          853492,
+          33638169
+        ]
+      },
+      {
+        "id": 52180279,
+        "title": "VEX Robotics",
+        "score": 0.75,
+        "path": [
+          700355,
+          853492,
+          52180279
+        ]
+      },
+      {
+        "id": 1006597,
+        "title": "Nanorobotics",
+        "score": 0.75,
+        "path": [
+          700355,
+          853492,
+          1006597
+        ]
+      }
+    ],
+    "focusNodeId": 853492
+  },
+  "computer vision": {
+    "matches": [
+      {
+        "id": 797088,
+        "title": "Computer vision",
+        "score": 1,
+        "path": [
+          700355,
+          797088
+        ]
+      },
+      {
+        "id": 4761377,
+        "title": "Computer vision software",
+        "score": 0.9,
+        "path": [
+          700355,
+          1532663,
+          4761377
+        ]
+      },
+      {
+        "id": 4826208,
+        "title": "Applications of computer vision",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          4826208
+        ]
+      },
+      {
+        "id": 43515647,
+        "title": "Feature detection (computer vision)",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          43515647
+        ]
+      },
+      {
+        "id": 12766413,
+        "title": "Motion in computer vision",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          12766413
+        ]
+      },
+      {
+        "id": 12397443,
+        "title": "Geometry in computer vision",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          12397443
+        ]
+      },
+      {
+        "id": 3193455,
+        "title": "Feature (computer vision)",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          43515647,
+          3193455
+        ]
+      },
+      {
+        "id": 14647485,
+        "title": "Bag-of-words model in computer vision",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          15358536,
+          14647485
+        ]
+      },
+      {
+        "id": 12891058,
+        "title": "Triangulation (computer vision)",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          12397443,
+          12891058
+        ]
+      },
+      {
+        "id": 39548653,
+        "title": "Image segmentation",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          39548653
+        ]
+      },
+      {
+        "id": 40374554,
+        "title": "Point-set registration",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          40374554
+        ]
+      },
+      {
+        "id": 1703661,
+        "title": "Scale space",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          1703661
+        ]
+      }
+    ],
+    "focusNodeId": 797088
+  },
+  "natural language processing": {
+    "matches": [
+      {
+        "id": 960021,
+        "title": "Natural language processing",
+        "score": 1,
+        "path": [
+          700355,
+          960021
+        ]
+      },
+      {
+        "id": 27538192,
+        "title": "Natural language processing software",
+        "score": 0.9,
+        "path": [
+          700355,
+          960021,
+          27538192
+        ]
+      },
+      {
+        "id": 20891879,
+        "title": "Natural language processing toolkits",
+        "score": 0.9,
+        "path": [
+          700355,
+          960021,
+          27538192,
+          20891879
+        ]
+      },
+      {
+        "id": 40640752,
+        "title": "Tasks of natural language processing",
+        "score": 0.75,
+        "path": [
+          700355,
+          960021,
+          40640752
+        ]
+      },
+      {
+        "id": 11737376,
+        "title": "Statistical natural language processing",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          11737376
+        ]
+      },
+      {
+        "id": 73248112,
+        "title": "Large language model",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          73248112
+        ]
+      },
+      {
+        "id": 79100184,
+        "title": "Language model benchmark",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          79100184
+        ]
+      },
+      {
+        "id": 3186372,
+        "title": "Human–robot interaction",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          3186372
+        ]
+      },
+      {
+        "id": 689427,
+        "title": "Latent semantic analysis",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          689427
+        ]
+      },
+      {
+        "id": 35591037,
+        "title": "Artificial intelligence in marketing",
+        "score": 0.45,
+        "path": [
+          700355,
+          1532663,
+          35591037
+        ]
+      },
+      {
+        "id": 10235,
+        "title": "ELIZA",
+        "score": 0.45,
+        "path": [
+          700355,
+          12931233,
+          10235
+        ]
+      },
+      {
+        "id": 6435232,
+        "title": "Sentiment analysis",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          40640752,
+          6435232
+        ]
+      }
+    ],
+    "focusNodeId": 960021
+  },
+  "deep learning": {
+    "matches": [
+      {
+        "id": 49119651,
+        "title": "Deep learning",
+        "score": 1,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          49119651
+        ]
+      },
+      {
+        "id": 71710609,
+        "title": "Deep learning software",
+        "score": 0.9,
+        "path": [
+          700355,
+          706543,
+          33542714,
+          71710609
+        ]
+      },
+      {
+        "id": 71710645,
+        "title": "Deep learning software applications",
+        "score": 0.9,
+        "path": [
+          700355,
+          706543,
+          33547387,
+          71710645
+        ]
+      },
+      {
+        "id": 73226490,
+        "title": "Deep Learning (South Park)",
+        "score": 0.9,
+        "path": [
+          700355,
+          1532663,
+          8735377,
+          74131114,
+          73226490
+        ]
+      },
+      {
+        "id": 56785877,
+        "title": "Deep Learning Studio",
+        "score": 0.9,
+        "path": [
+          700355,
+          706543,
+          33542714,
+          71710609,
+          56785877
+        ]
+      },
+      {
+        "id": 61603971,
+        "title": "Transformer (deep learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          71711428,
+          61603971
+        ]
+      },
+      {
+        "id": 76401012,
+        "title": "Topological deep learning",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          49119651,
+          76401012
+        ]
+      },
+      {
+        "id": 49119569,
+        "title": "Comparison of deep learning software",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          33542714,
+          71710609,
+          49119569
+        ]
+      },
+      {
+        "id": 81363082,
+        "title": "State space model (deep learning)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          49119651,
+          81363082
+        ]
+      },
+      {
+        "id": 75795581,
+        "title": "Mamba (deep learning architecture)",
+        "score": 0.75,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          71711428,
+          75795581
+        ]
+      },
+      {
+        "id": 42936114,
+        "title": "Artificial neural networks",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          42936114
+        ]
+      },
+      {
+        "id": 33547387,
+        "title": "Applied machine learning",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          33547387
+        ]
+      }
+    ],
+    "focusNodeId": 49119651
+  },
+  "humanoid robot": {
+    "matches": [
+      {
+        "id": 48180,
+        "title": "Humanoid robot",
+        "score": 1,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          48180
+        ]
+      },
+      {
+        "id": 17612904,
+        "title": "Humanoid robots",
+        "score": 0.9,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904
+        ]
+      },
+      {
+        "id": 943048,
+        "title": "Robots",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048
+        ]
+      },
+      {
+        "id": 713,
+        "title": "Android (robot)",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          713
+        ]
+      },
+      {
+        "id": 80471191,
+        "title": "Algorithm King",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          82381038,
+          80471191
+        ]
+      },
+      {
+        "id": 70884729,
+        "title": "Algorithm Queen",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          82381038,
+          70884729
+        ]
+      },
+      {
+        "id": 1657350,
+        "title": "Robot combat",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          2386176,
+          1657350
+        ]
+      },
+      {
+        "id": 55635746,
+        "title": "Sophia (robot)",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          55635746
+        ]
+      },
+      {
+        "id": 500894,
+        "title": "ASIMO",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          4826208,
+          52779579,
+          500894
+        ]
+      },
+      {
+        "id": 405430,
+        "title": "Gynoid",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          405430
+        ]
+      },
+      {
+        "id": 76989865,
+        "title": "Mindar",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          76989865
+        ]
+      },
+      {
+        "id": 66294263,
+        "title": "Shalu Robot",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          66294263
+        ]
+      }
+    ],
+    "focusNodeId": 48180
+  },
+  "humanoid robots": {
+    "matches": [
+      {
+        "id": 17612904,
+        "title": "Humanoid robots",
+        "score": 1,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904
+        ]
+      },
+      {
+        "id": 943048,
+        "title": "Robots",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048
+        ]
+      },
+      {
+        "id": 1657350,
+        "title": "Robot combat",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          2386176,
+          1657350
+        ]
+      },
+      {
+        "id": 82985022,
+        "title": "Humanoid hand",
+        "score": 0.45,
+        "path": [
+          700355,
+          853492,
+          943048,
+          17612904,
+          82985022
+        ]
+      }
+    ],
+    "focusNodeId": 17612904
+  },
+  "vision transformer": {
+    "matches": [
+      {
+        "id": 68212199,
+        "title": "Vision transformer",
+        "score": 1,
+        "path": [
+          700355,
+          797088,
+          68212199
+        ]
+      }
+    ],
+    "focusNodeId": 68212199
+  },
+  "convolutional neural network": {
+    "matches": [
+      {
+        "id": 40409788,
+        "title": "Convolutional neural network",
+        "score": 1,
+        "path": [
+          700355,
+          797088,
+          40409788
+        ]
+      },
+      {
+        "id": 63359350,
+        "title": "Region Based Convolutional Neural Networks",
+        "score": 0.75,
+        "path": [
+          700355,
+          797088,
+          15358536,
+          63359350
+        ]
+      },
+      {
+        "id": 52801963,
+        "title": "AlexNet",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          15358536,
+          52801963
+        ]
+      },
+      {
+        "id": 47332350,
+        "title": "DeepDream",
+        "score": 0.45,
+        "path": [
+          700355,
+          1532663,
+          4761377,
+          47332350
+        ]
+      },
+      {
+        "id": 77802751,
+        "title": "VGGNet",
+        "score": 0.45,
+        "path": [
+          700355,
+          797088,
+          15358536,
+          77802751
+        ]
+      },
+      {
+        "id": 76401012,
+        "title": "Topological deep learning",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          49119651,
+          76401012
+        ]
+      },
+      {
+        "id": 23594537,
+        "title": "Time delay neural network",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          71711428,
+          23594537
+        ]
+      }
+    ],
+    "focusNodeId": 40409788
+  },
+  "large language models": {
+    "matches": [
+      {
+        "id": 73281105,
+        "title": "Large language models",
+        "score": 1,
+        "path": [
+          700355,
+          1532663,
+          73281105
+        ]
+      },
+      {
+        "id": 75223933,
+        "title": "Grok (chatbot)",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          75223933
+        ]
+      },
+      {
+        "id": 70984276,
+        "title": "Foundation model",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          70984276
+        ]
+      },
+      {
+        "id": 73455792,
+        "title": "Artificial intelligence and copyright",
+        "score": 0.45,
+        "path": [
+          700355,
+          77023214,
+          73455792
+        ]
+      },
+      {
+        "id": 70993391,
+        "title": "LaMDA",
+        "score": 0.45,
+        "path": [
+          700355,
+          14627437,
+          70993391
+        ]
+      },
+      {
+        "id": 58256477,
+        "title": "Artificial intelligence in Wikimedia projects",
+        "score": 0.45,
+        "path": [
+          700355,
+          72630892,
+          58256477
+        ]
+      },
+      {
+        "id": 81026045,
+        "title": "Kimi (AI)",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          81026045
+        ]
+      },
+      {
+        "id": 82270714,
+        "title": "OpenClaw",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          82270714
+        ]
+      },
+      {
+        "id": 76526800,
+        "title": "T5 (language model)",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          76526800
+        ]
+      },
+      {
+        "id": 73577626,
+        "title": "LangChain",
+        "score": 0.45,
+        "path": [
+          700355,
+          72630892,
+          73577626
+        ]
+      },
+      {
+        "id": 76900589,
+        "title": "Llama.cpp",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          76900589
+        ]
+      },
+      {
+        "id": 78947544,
+        "title": "Harvey (software)",
+        "score": 0.45,
+        "path": [
+          700355,
+          72630892,
+          78947544
+        ]
+      }
+    ],
+    "focusNodeId": 73281105
+  },
+  "reinforcement learning": {
+    "matches": [
+      {
+        "id": 66294,
+        "title": "Reinforcement learning",
+        "score": 1,
+        "path": [
+          700355,
+          706543,
+          24059390,
+          66294
+        ]
+      },
+      {
+        "id": 73200355,
+        "title": "Reinforcement learning from human feedback",
+        "score": 0.9,
+        "path": [
+          700355,
+          960021,
+          958652,
+          42452485,
+          73200355
+        ]
+      },
+      {
+        "id": 62285602,
+        "title": "Multi-agent reinforcement learning",
+        "score": 0.75,
+        "path": [
+          700355,
+          796635,
+          8050180,
+          62285602
+        ]
+      },
+      {
+        "id": 73429796,
+        "title": "Reward hacking",
+        "score": 0.45,
+        "path": [
+          700355,
+          72630892,
+          73429796
+        ]
+      },
+      {
+        "id": 42452485,
+        "title": "Language modeling",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          958652,
+          42452485
+        ]
+      },
+      {
+        "id": 854461,
+        "title": "Learning classifier system",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          754055,
+          854461
+        ]
+      },
+      {
+        "id": 53349322,
+        "title": "Policy gradient method",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          33547228,
+          53349322
+        ]
+      },
+      {
+        "id": 73516582,
+        "title": "Synthetic nervous system",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          42936114,
+          3735046,
+          73516582
+        ]
+      }
+    ],
+    "focusNodeId": 66294
+  },
+  "generative ai": {
+    "matches": [
+      {
+        "id": 73731168,
+        "title": "Generative AI",
+        "score": 1,
+        "path": [
+          700355,
+          73731168
+        ]
+      },
+      {
+        "id": 75223933,
+        "title": "Grok (chatbot)",
+        "score": 0.45,
+        "path": [
+          700355,
+          52773626,
+          75223933
+        ]
+      },
+      {
+        "id": 62008969,
+        "title": "Synthetic media",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          62008969
+        ]
+      },
+      {
+        "id": 50073184,
+        "title": "Generative adversarial network",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          50073184
+        ]
+      },
+      {
+        "id": 70984276,
+        "title": "Foundation model",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          70984276
+        ]
+      },
+      {
+        "id": 71642695,
+        "title": "Stable Diffusion",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          71642695
+        ]
+      },
+      {
+        "id": 69071767,
+        "title": "Prompt engineering",
+        "score": 0.45,
+        "path": [
+          700355,
+          706543,
+          69071767
+        ]
+      },
+      {
+        "id": 62590682,
+        "title": "Deepfake pornography",
+        "score": 0.45,
+        "path": [
+          700355,
+          81273169,
+          62590682
+        ]
+      },
+      {
+        "id": 71151961,
+        "title": "Midjourney",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          71151961
+        ]
+      },
+      {
+        "id": 71986552,
+        "title": "Text-to-video model",
+        "score": 0.45,
+        "path": [
+          700355,
+          960021,
+          71986552
+        ]
+      },
+      {
+        "id": 81538176,
+        "title": "AI-generated content in American politics",
+        "score": 0.45,
+        "path": [
+          700355,
+          73731168,
+          81538176
+        ]
+      },
+      {
+        "id": 74131114,
+        "title": "ChatGPT",
+        "score": 0.45,
+        "path": [
+          700355,
+          1532663,
+          8735377,
+          74131114
+        ]
+      }
+    ],
+    "focusNodeId": 73731168
+  },
+  "quantum machine learning": {
+    "matches": [
+      {
+        "id": 44108758,
+        "title": "Quantum machine learning",
+        "score": 1,
+        "path": [
+          700355,
+          706543,
+          44108758
+        ]
+      }
+    ],
+    "focusNodeId": 44108758
+  }
+}
