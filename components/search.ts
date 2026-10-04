@@ -16,11 +16,13 @@ export async function searchUniverse(
 ): Promise<SearchResult | null> {
   try {
     const timeout = AbortSignal.timeout(5000);
+    // AbortSignal.any is missing in older Safari; there, cancelling beats the timeout.
+    const combined = !signal ? timeout : typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal;
     const res = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      signal: combined,
     });
     if (res.ok) return (await res.json()) as SearchResult;
   } catch {
@@ -36,17 +38,18 @@ function keywordSearch(query: string, nodes: UNode[], byId: Map<number, UNode>):
     .split(/[^a-z0-9]+/)
     .filter((term) => term.length > 1 && !STOP_WORDS.has(term));
   if (!terms.length) return { matches: [], focusNodeId: null };
+  const wordStarts = terms.map((term) => new RegExp(`\\b${term}`)); // terms are [a-z0-9] only, so safe in a regex
 
   const scored = nodes
     .map((node) => {
       const title = node.title.toLowerCase();
       const summary = node.summary.toLowerCase();
       let score = 0;
-      for (const term of terms) {
+      terms.forEach((term, k) => {
         if (title === term) score += 6;
-        else if (new RegExp(`\\b${term}`).test(title)) score += 3;
+        else if (wordStarts[k].test(title)) score += 3;
         if (summary.includes(term)) score += 1;
-      }
+      });
       return { node, score };
     })
     .filter(({ score }) => score > 0)

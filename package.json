@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync-data": "node -e \"require('fs').copyFileSync('pipeline/data/nodes.json', 'public/nodes.json')\"",
+    "predev": "npm run sync-data",
     "dev": "next dev",
+    "prebuild": "npm run sync-data",
     "build": "next build",
     "start": "next start"
   },

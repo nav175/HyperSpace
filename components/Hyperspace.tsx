@@ -91,9 +91,14 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     });
   }, []);
 
-  // Make room for the card on wide screens; on phones it slides up from the bottom instead.
+  // Make room for the card on wide screens; on phones (the CSS breakpoint) it slides up from the
+  // bottom instead. Re-check on resize, since rotating or resizing can cross the breakpoint.
   useEffect(() => {
-    universeRef.current?.setRightInset(selected && window.innerWidth > 760 ? 404 : 0);
+    const wide = window.matchMedia('(min-width: 761px)');
+    const update = () => universeRef.current?.setRightInset(selected && wide.matches ? 404 : 0);
+    update();
+    wide.addEventListener('change', update);
+    return () => wide.removeEventListener('change', update);
   }, [selected]);
 
   const goHome = useCallback(() => {
@@ -201,8 +206,9 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         return;
       }
       if (e.key === 'Escape') {
-        if (typing) inputRef.current?.blur();
+        // One layer per press: the suggestions, then the search field, then the card.
         if (resultsOpen) setResultsOpen(false);
+        else if (typing) inputRef.current?.blur();
         else setSelected(null);
         return;
       }

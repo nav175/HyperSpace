@@ -1,5 +1,5 @@
-// What the API serves, as plain async functions any server can call: Karn's Next.js route
-// handlers (see next-routes/), or `npm run api` for local testing. Shapes follow the README contract.
+// What the API serves, as plain async functions any server can call: the Next.js route handlers in
+// app/api, or `npm run api` for local testing. Shapes follow the README contract.
 import { pool } from './db.mjs';
 import { embedQuery } from './embedding.mjs';
 
@@ -14,22 +14,23 @@ export async function searchNodes(query, { limit = 8 } = {}) {
   if (!text) return { matches: [], focusNodeId: null };
   const db = pool();
 
-  const vector = await embedQuery(db, text);
-  const [semantic] = await db.query(
-    `SELECT id, title, path FROM nodes WHERE embedding IS NOT NULL
-     ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT ${CANDIDATES}`,
-    [vector]
+  // The two halves are independent, so they run side by side.
+  const semanticSearch = embedQuery(db, text).then((vector) =>
+    db.query(
+      `SELECT id, title, path FROM nodes WHERE embedding IS NOT NULL
+       ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT ${CANDIDATES}`,
+      [vector]
+    )
   );
-  let keyword = [];
-  try {
-    [keyword] = await db.query(
+  const keywordSearch = db
+    .query(
       `SELECT id, title, path FROM nodes WHERE fts_match_word(?, search_text)
        ORDER BY fts_match_word(?, search_text) DESC LIMIT ${CANDIDATES}`,
       [text, text]
-    );
-  } catch {
+    )
     // Full-text search is the extra half of hybrid; meaning-based results stand on their own.
-  }
+    .catch(() => [[]]);
+  const [[semantic], [keyword]] = await Promise.all([semanticSearch, keywordSearch]);
 
   const fused = new Map();
   for (const rows of [semantic, keyword]) {

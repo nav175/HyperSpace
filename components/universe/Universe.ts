@@ -152,6 +152,7 @@ export class Universe {
   private touches = new Map<number, Pt>();
   private pinchDistance = 0;
   private gestureScale = 1;
+  private gesturing = false;
   private readonly resizeObserver: ResizeObserver;
 
   constructor(canvas: HTMLCanvasElement, { fontFamily, theme = 'dark' }: { fontFamily: string; theme?: ThemeName }) {
@@ -170,6 +171,7 @@ export class Universe {
     // Safari reports trackpad pinches as gesture events rather than ctrl+wheel.
     canvas.addEventListener('gesturestart', this.onGestureStart);
     canvas.addEventListener('gesturechange', this.onGestureChange);
+    canvas.addEventListener('gestureend', this.onGestureEnd);
     this.resize();
   }
 
@@ -316,6 +318,7 @@ export class Universe {
     this.canvas.removeEventListener('wheel', this.onWheel);
     this.canvas.removeEventListener('gesturestart', this.onGestureStart);
     this.canvas.removeEventListener('gesturechange', this.onGestureChange);
+    this.canvas.removeEventListener('gestureend', this.onGestureEnd);
   }
 
   // ── Frame loop ───────────────────────────────────────────────────────────────────────
@@ -623,10 +626,11 @@ export class Universe {
       const f = this.sf[i];
       const size = focused ? 17 : category ? 10 + 3 * f : 10.5 + 3.5 * f;
       const text = category && !focused ? node.title.toUpperCase() : node.title;
-      const font = `${focused || category ? 600 : 400} ${size.toFixed(1)}px ${this.font}`;
-      ctx.font = font;
-      ctx.letterSpacing = category && !focused ? '0.08em' : '0px';
-      const width = this.measure(text, font, ctx.letterSpacing);
+      const weight = focused || category ? 600 : 400;
+      const spacing = category && !focused ? '0.08em' : '0px';
+      const width = (this.textWidth(text, weight, spacing) * size) / 100;
+      ctx.font = `${weight} ${size.toFixed(1)}px ${this.font}`;
+      ctx.letterSpacing = spacing;
       const r = this.nodeRadius(i);
       const h = size + 4;
       const x = focused ? this.sx[i] - width / 2 : this.sx[i] + r + 6;
@@ -706,10 +710,14 @@ export class Universe {
     return style;
   }
 
-  private measure(text: string, font: string, spacing: string) {
-    const key = `${font}|${spacing}|${text}`;
+  // Text width scales with font size (letter spacing is in em), so each label is measured once at
+  // 100px and scaled, which keeps the cache to one entry per title and style.
+  private textWidth(text: string, weight: number, spacing: string) {
+    const key = `${weight}|${spacing}|${text}`;
     let width = this.textWidths.get(key);
     if (width === undefined) {
+      this.ctx.font = `${weight} 100px ${this.font}`;
+      this.ctx.letterSpacing = spacing;
       width = this.ctx.measureText(text).width;
       this.textWidths.set(key, width);
     }
@@ -811,6 +819,11 @@ export class Universe {
 
   private onPointerUp = (e: PointerEvent) => {
     this.touches.delete(e.pointerId);
+    if (this.touches.size === 1 && !this.pointer) {
+      const [[id, point]] = [...this.touches];
+      this.pointer = { id, x: point.x, y: point.y, startX: point.x, startY: point.y, dragging: true };
+      return;
+    }
     const p = this.pointer;
     this.pointer = null;
     this.canvas.style.cursor = this.hover >= 0 ? 'pointer' : 'grab';
@@ -832,6 +845,7 @@ export class Universe {
     e.preventDefault();
     const lines = e.deltaMode === 1 ? 16 : 1; // some mice scroll in lines rather than pixels
     if (e.ctrlKey) {
+      if (this.gesturing) return; // Safari is already zooming from the gesture events
       const { x, y } = this.local(e);
       this.zoomAt(Math.exp(-e.deltaY * lines * 0.012), x, y);
       return;
@@ -842,6 +856,11 @@ export class Universe {
   private onGestureStart = (e: Event) => {
     e.preventDefault();
     this.gestureScale = 1;
+    this.gesturing = true;
+  };
+
+  private onGestureEnd = () => {
+    this.gesturing = false;
   };
 
   private onGestureChange = (e: Event) => {
