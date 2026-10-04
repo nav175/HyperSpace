@@ -162,6 +162,62 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     if (url.href !== window.location.href) window.history.replaceState(null, '', url);
   }, [selected, nodes]);
 
+  // Listen (ElevenLabs): only offered when the server has a key. Audio for each text is fetched once.
+  const [voice, setVoice] = useState(false);
+  const [speaking, setSpeaking] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef(new Map<string, string>());
+  useEffect(() => {
+    fetch('/api/speak')
+      .then((res) => (res.ok ? (res.json() as Promise<{ enabled: boolean }>) : { enabled: false }))
+      .then(({ enabled }) => setVoice(enabled))
+      .catch(() => setVoice(false));
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setSpeaking(null);
+  }, []);
+
+  // Plays `text` (or stops it if it's already playing). `id` names what's being read, for the button.
+  const listen = useCallback(
+    async (id: string, text: string) => {
+      if (speaking === id) return stopSpeaking();
+      stopSpeaking();
+      setVoiceError(null);
+      setSpeaking(id);
+      try {
+        let url = audioCache.current.get(text);
+        if (!url) {
+          const res = await fetch('/api/speak', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+            signal: AbortSignal.timeout(25_000),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          url = URL.createObjectURL(await res.blob());
+          audioCache.current.set(text, url);
+        }
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => setSpeaking((current) => (current === id ? null : current));
+        await audio.play();
+      } catch {
+        setSpeaking((current) => (current === id ? null : current));
+        setVoiceError(id);
+      }
+    },
+    [speaking, stopSpeaking]
+  );
+
+  // Moving to another topic stops the reading.
+  useEffect(() => {
+    stopSpeaking();
+  }, [selected?.id, answer?.question, connection?.to.id, stopSpeaking]);
+
   const [copied, setCopied] = useState<number | null>(null);
   const copyLink = useCallback(async (node: UNode) => {
     const url = new URL(window.location.href);
@@ -516,6 +572,26 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     connectRef.current = connect;
   });
 
+  function listenButton(id: string, text: string) {
+    if (!voice) return null;
+    const on = speaking === id;
+    return (
+      <button className={on ? 'connect-button listen on' : 'connect-button listen'} onClick={() => listen(id, text)} title="Read aloud with ElevenLabs">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          {on ? <path d="M7 6h3v12H7zM14 6h3v12h-3z" /> : <path d="M4 10v4h3l5 4V6L7 10H4zM15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" />}
+        </svg>
+        {on ? 'Stop' : 'Listen'}
+      </button>
+    );
+  }
+
+  // Answers are read without the [id] citation markers.
+  const spokenAnswer = (a: Answer) =>
+    a.text.replace(/\s*\[(\d+)\]/g, (_, id) => {
+      const title = a.sources.find((source) => source.id === Number(id))?.title;
+      return title ? ` (${title})` : '';
+    });
+
   // "Hover" readout for the lens: hyperbolic distance from the centre, and how far out it's drawn.
   function lensReadout() {
     const target = hovered ?? selected;
@@ -724,6 +800,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
                 ? "Couldn't reach Gemini just now. Try again in a moment."
                 : renderAnswer(answer)}
           </p>
+          {answer.status === 'done' && voice && <div className="card-actions">{listenButton(`answer-${answer.question}`, spokenAnswer(answer))}</div>}
           {answer.status === 'done' && answer.sources.length > 0 && (
             <div className="sources">
               <p className="grow-note">Sources on the map</p>
@@ -766,6 +843,11 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
                 ? "Couldn't reach Gemini just now. The path above still shows how they're related."
                 : connection.explanation}
           </p>
+          {connection.status === 'done' && voice && connection.explanation && (
+            <div className="card-actions">
+              {listenButton(`connection-${connection.from.id}-${connection.to.id}`, connection.explanation)}
+            </div>
+          )}
           {connection.status === 'done' && <p className="grow-note">Explained by Gemini</p>}
         </aside>
       )}
@@ -835,6 +917,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
               </svg>
               Connect
             </button>
+            {listenButton(`topic-${selected.id}`, `${selected.title}. ${selected.summary}${selected.reason ? ` Gemini added it here because: ${selected.reason}` : ''}`)}
             <a className="card-link" href={selected.url} target="_blank" rel="noreferrer">
               Read on Wikipedia
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -843,6 +926,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
             </a>
           </div>
           {growNote?.id === selected.id && <p className="grow-note">{growNote.text}</p>}
+          {voiceError === `topic-${selected.id}` && <p className="grow-note">Couldn't read this aloud just now.</p>}
         </aside>
       )}
 
