@@ -67,6 +67,15 @@ When a user expands a topic, the app retrieves related source material. Gemini h
 nodes.json:          [{ id, title, summary, parentId, depth, url, type }]
 POST /api/search     {query} → { matches: [{ id, title, score, path: [ids] }], focusNodeId }
 GET  /api/node/:id   → Node + path: [ids]
+POST /api/expand     {nodeId} → { parentId, children: [Node] }
+
+Renderer API (Navjot builds, Karn calls):
+  loadTree(nodes)
+  flyTo(id)
+  highlight(ids)
+  addChildren(parentId, nodes)
+  setMode("hyperbolic" | "euclid")
+  onSelect(callback)  ← fires with the node when the user clicks
 
 ## Keeping It Fast
 
