@@ -16,7 +16,7 @@ const { values: opts } = parseArgs({
 const WORKERS = Number(opts.workers);
 const BATCH = 25;
 
-const db = await connect();
+let db = await connect();
 try {
   if (opts.all) await db.query('UPDATE nodes SET embedding = NULL');
   const [[{ pending, total }]] = await db.query('SELECT COUNT(*) - COUNT(embedding) AS pending, COUNT(*) AS total FROM nodes');
@@ -50,6 +50,9 @@ try {
     })
   );
 
+  // TiDB drops connections left idle for about five minutes, and this one sat out the whole run.
+  await db.end().catch(() => {});
+  db = await connect();
   const [[{ embedded }]] = await db.query('SELECT COUNT(embedding) AS embedded FROM nodes');
   console.log(`\n✓ ${embedded} of ${total} nodes have embeddings`);
 
