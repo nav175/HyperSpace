@@ -77,7 +77,7 @@ export async function saveExpansion(nodeId, children, model) {
 }
 
 let loadedVersion;
-async function datasetVersion() {
+export async function datasetVersion() {
   loadedVersion ??= (await pool().query('SELECT dataset_version FROM nodes LIMIT 1'))[0][0]?.dataset_version;
   return loadedVersion;
 }

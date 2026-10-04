@@ -33,13 +33,33 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const themeRef = useRef<ThemeName>('dark');
   const [presenting, setPresenting] = useState(false);
   const [explored, setExplored] = useState(false);
+  // Expand: topics Gemini grew this visit, which one is growing now, and what happened last time.
+  const [grown, setGrown] = useState<UNode[]>([]);
+  const [growing, setGrowing] = useState<number | null>(null);
+  const [growNote, setGrowNote] = useState<{ id: number; text: string } | null>(null);
+  // The search matches currently lit, so a new branch's highlight can hand back to them afterwards.
+  const searchLit = useRef<number[]>([]);
+  const growTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const byId = useMemo(() => new Map((nodes ?? []).map((node) => [node.id, node])), [nodes]);
+  const allNodes = useMemo(() => (nodes ? [...nodes, ...grown] : null), [nodes, grown]);
+  const byId = useMemo(() => new Map((allNodes ?? []).map((node) => [node.id, node])), [allNodes]);
   const childCount = useMemo(() => {
     const counts = new Map<number, number>();
-    for (const node of nodes ?? []) if (node.parentId !== null) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
+    for (const node of allNodes ?? []) if (node.parentId !== null) counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
     return counts;
-  }, [nodes]);
+  }, [allNodes]);
+
+  // The offline keyword search reads the latest universe, including grown topics, without making
+  // the suggestions effect re-run (and re-light matches) every time a branch grows.
+  const latest = useRef({ allNodes, byId });
+  useEffect(() => {
+    latest.current = { allNodes, byId };
+  }, [allNodes, byId]);
+
+  const lightMatches = useCallback((ids: number[]) => {
+    searchLit.current = ids;
+    universeRef.current?.highlight(ids);
+  }, []);
   const root = useMemo(() => nodes?.find((node) => node.parentId === null) ?? null, [nodes]);
 
   const focusNode = useCallback((node: UNode) => {
@@ -137,8 +157,8 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     setQuery('');
     setResult(null);
     setResultsOpen(false);
-    universeRef.current?.highlight([]);
-  }, []);
+    lightMatches([]);
+  }, [lightMatches]);
 
   // Suggestions follow the text as you type: a short pause, then search. Each keystroke cancels the
   // previous request, so a slow answer for old text can never replace the current suggestions.
@@ -149,26 +169,26 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     if (!text) {
       setResult(null);
       setSearching(false);
-      universeRef.current?.highlight([]);
+      lightMatches([]);
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setSearching(true);
-      const found = await searchUniverse(text, nodes, byId, controller.signal);
+      const found = await searchUniverse(text, latest.current.allNodes ?? nodes, latest.current.byId, controller.signal);
       if (!found) return;
       setSearching(false);
       setResult({ ...found, query: text });
       setActiveIndex(0);
       setStepped(false);
       if (document.activeElement === inputRef.current) setResultsOpen(true);
-      universeRef.current?.highlight(found.matches.map((match) => match.id));
+      lightMatches(found.matches.map((match) => match.id));
     }, 220);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, nodes, byId]);
+  }, [query, nodes, lightMatches]);
 
   function chooseMatch(id: number) {
     const node = byId.get(id);
@@ -206,13 +226,13 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       return;
     }
     setSearching(true);
-    const found = await searchUniverse(text, nodes, byId);
+    const found = await searchUniverse(text, allNodes ?? nodes, byId);
     setSearching(false);
     if (!found) return;
     setResult({ ...found, query: text });
     setActiveIndex(0);
     setStepped(false);
-    universeRef.current?.highlight(found.matches.map((match) => match.id));
+    lightMatches(found.matches.map((match) => match.id));
     showMatches(found);
   }
 
@@ -266,6 +286,47 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [goHome, mode, resultsOpen, setMode, toggleTheme]);
 
+  // Expand: Gemini picks related Wikipedia topics to grow under this one (POST /api/expand). The new
+  // branches grow out of the node and light up for a moment, then any search highlight comes back.
+  async function grow(node: UNode) {
+    if (growing !== null) return;
+    setGrowing(node.id);
+    setGrowNote(null);
+    // Bring the topic to the centre first, so its new branches grow where you're looking.
+    universeRef.current?.flyTo(node.id);
+    try {
+      const res = await fetch('/api/expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: node.id, depth: node.depth }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { parentId: number; children: UNode[]; model?: string };
+      const fresh = data.children.filter((child) => !byId.has(child.id));
+      if (fresh.length) {
+        setGrown((current) => [...current, ...fresh]);
+        universeRef.current?.addChildren(node.id, fresh);
+        universeRef.current?.highlight(fresh.map((child) => child.id));
+        // Follow the growth: frame the topic with its new branches, so they get room and labels.
+        universeRef.current?.flyToAll([node.id, ...fresh.map((child) => child.id)], node.id);
+        clearTimeout(growTimer.current);
+        growTimer.current = setTimeout(() => universeRef.current?.highlight(searchLit.current), 4500);
+      }
+      const by = data.model?.startsWith('gemini') ? 'Gemini' : 'Wikipedia';
+      setGrowNote({
+        id: node.id,
+        text: fresh.length
+          ? `${by} grew ${fresh.length} new ${fresh.length === 1 ? 'topic' : 'topics'} here`
+          : 'Nothing new to grow here yet',
+      });
+    } catch {
+      setGrowNote({ id: node.id, text: "Couldn't grow this branch just now. Try again." });
+    } finally {
+      setGrowing(null);
+    }
+  }
+
   const path = selected ? pathOf(selected.id, byId).map((id) => byId.get(id)!) : [];
   const breadcrumb = (id: number) =>
     pathOf(id, byId)
@@ -290,7 +351,11 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
       <header className="brand">
         <h1>Hyperspace</h1>
-        <p>{nodes ? `${nodes.length.toLocaleString()} AI topics from Wikipedia` : 'A living map of knowledge'}</p>
+        <p>
+          {allNodes
+            ? `${allNodes.length.toLocaleString()} AI topics from Wikipedia${grown.length ? ` · ${grown.length} grown by Gemini` : ''}`
+            : 'A living map of knowledge'}
+        </p>
       </header>
 
       <div
@@ -406,12 +471,32 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
             {selected.type === 'category' ? `Field · ${childCount.get(selected.id) ?? 0} topics` : 'Topic'}
           </p>
           <p className="card-summary">{selected.summary}</p>
-          <a className="card-link" href={selected.url} target="_blank" rel="noreferrer">
-            Read on Wikipedia
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 17 17 7M9 7h8v8" />
-            </svg>
-          </a>
+          {selected.reason && (
+            <p className="card-reason">
+              <span>Why Gemini added it</span>
+              {selected.reason}
+            </p>
+          )}
+          <div className="card-actions">
+            <button
+              className={growing === selected.id ? 'grow busy' : 'grow'}
+              onClick={() => grow(selected)}
+              disabled={growing !== null}
+              title="Gemini finds related Wikipedia topics and grows them as new branches"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5" />
+              </svg>
+              {growing === selected.id ? 'Growing…' : 'Grow with Gemini'}
+            </button>
+            <a className="card-link" href={selected.url} target="_blank" rel="noreferrer">
+              Read on Wikipedia
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 17 17 7M9 7h8v8" />
+              </svg>
+            </a>
+          </div>
+          {growNote?.id === selected.id && <p className="grow-note">{growNote.text}</p>}
         </aside>
       )}
 

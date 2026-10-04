@@ -49,7 +49,7 @@ AI adds semantic search and helps organize new information as users explore.
 
 1. Retrieve real articles and category relationships from Wikipedia.
 2. Filter duplicates, maintenance categories and cycles.
-3. Build a hierarchy, using Gemini where organization needs help.
+3. Build a hierarchy from the category graph, breadth first, so each page keeps its shallowest parent.
 4. Generate embeddings and store searchable nodes in TiDB.
 5. Render the hierarchy in the hyperbolic interface.
 
@@ -61,13 +61,13 @@ The user's query is converted into an embedding. TiDB retrieves semantically rel
 
 ### Growing New Branches
 
-When a user expands a topic, the app retrieves related source material. Gemini helps organize that information into new branches, which appear in the existing universe.
+Press **Grow with Gemini** on any topic's card. The server gathers candidate Wikipedia pages: a category's members, or the links in an article's intro and "See also" section. The same filters as the ingest drop people, companies, places and media. Gemini then picks up to eight that belong under the topic and says why, using only ids from the candidate list, so it can't invent pages. The new branches grow out of the topic along geodesics, and each shows "Why Gemini added it" on its card. Grown topics can be grown again.
 
 ## SHAPES THAT NEEDED TO BE MATCHED
 nodes.json:          [{ id, title, summary, parentId, depth, url, type }]
 POST /api/search     {query} → { matches: [{ id, title, score, path: [ids] }], focusNodeId }
 GET  /api/node/:id   → Node + path: [ids]
-POST /api/expand     {nodeId} → { parentId, children: [Node] }
+POST /api/expand     {nodeId, depth?} → { parentId, children: [Node + reason], model }
 
 Renderer API (Navjot builds, Karn calls):
   loadTree(nodes)
@@ -81,7 +81,7 @@ Renderer API (Navjot builds, Karn calls):
 
 The main dataset is prepared and cached ahead of time. Ordinary navigation happens in the browser.
 
-Gemini processes groups of concepts rather than making one request per node. Successful expansions are cached for reuse.
+Each Expand asks Gemini once, with all its candidates, rather than once per node. Gemini's picks are cached in TiDB (the `expansions` table), so repeating an Expand is instant. If a Gemini model is busy or retired, the next one in a short list is tried.
 
 The core visualization is designed to remain usable with cached data when external services are unavailable.
 

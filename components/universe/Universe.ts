@@ -10,6 +10,7 @@ export type UNode = {
   depth: number;
   url: string;
   type: string;
+  reason?: string; // why Gemini put a grown node here (Expand)
 };
 export type Mode = 'hyperbolic' | 'euclid';
 export type ThemeName = 'dark' | 'light';
@@ -18,6 +19,9 @@ type Pt = { x: number; y: number };
 type RGB = [number, number, number];
 type Flight = { start: number; duration: number; from: C; target: C; flatFrom: Pt; flatTo: Pt; zoomFrom: number; zoomTo: number };
 type Morph = { start: number; duration: number; from: number; to: number };
+// After addChildren: every node glides from where it was (new ones from their parent) to the new layout.
+// `camera` keeps the view steady while the layout shifts, until a flight or a drag takes over.
+type Growth = { start: number; duration: number; fromH: Float64Array; fromF: Float64Array; camera: { from: C; to: C } | null };
 type ZoomAnimation = { start: number; duration: number; fromScale: number; toScale: number; fromOffset: Pt; toOffset: Pt };
 type Label = { i: number; x: number; y: number; w: number; h: number };
 export type Insets = { top: number; right: number; left: number };
@@ -131,6 +135,11 @@ export class Universe {
   private highlightPath = new Set<number>();
   private dim = 0; // 0 → 1 as a search's non-matches fade back, eased in step()
   private flight: Flight | null = null;
+  private growth: Growth | null = null;
+  private gx = new Float64Array(0); // positions mid-growth (hyperbolic, then flat)
+  private gy = new Float64Array(0);
+  private gfx = new Float64Array(0);
+  private gfy = new Float64Array(0);
   private morph: Morph | null = null;
   private zoomAnimation: ZoomAnimation | null = null;
   private selectHandler: ((node: UNode) => void) | null = null;
@@ -274,8 +283,46 @@ export class Universe {
     this.invalidate();
   }
 
-  addChildren(_parentId: number, nodes: UNode[]) {
-    this.loadTree([...this.nodes, ...nodes.filter((node) => !this.index.has(node.id))]);
+  // New branches grow out of their parent: the tree is laid out again with them, and every node glides
+  // from its old place to its new one along a geodesic, the new ones starting at the parent.
+  addChildren(parentId: number, nodes: UNode[]) {
+    const fresh = nodes.filter((node) => !this.index.has(node.id));
+    if (!fresh.length) return;
+    const before = new Map(this.nodes.map((node, i) => [node.id, i]));
+    const oldHx = this.hx;
+    const oldHy = this.hy;
+    const oldFx = this.fx;
+    const oldFy = this.fy;
+    const oldFocus = this.focus >= 0 ? { re: oldHx[this.focus], im: oldHy[this.focus] } : null;
+    const centerFrom = this.center;
+    const lit = [...this.highlighted].map((i) => this.nodes[i].id);
+
+    this.loadTree([...this.nodes, ...fresh]);
+    this.highlight(lit);
+
+    const n = this.nodes.length;
+    const fromH = new Float64Array(2 * n);
+    const fromF = new Float64Array(2 * n);
+    const parentBefore = before.get(parentId);
+    this.nodes.forEach((node, i) => {
+      const j = before.get(node.id) ?? parentBefore;
+      fromH[2 * i] = j === undefined ? this.hx[i] : oldHx[j];
+      fromH[2 * i + 1] = j === undefined ? this.hy[i] : oldHy[j];
+      fromF[2 * i] = j === undefined ? this.fx[i] : oldFx[j];
+      fromF[2 * i + 1] = j === undefined ? this.fy[i] : oldFy[j];
+    });
+    // Keep the camera where it was relative to the focused node, which may itself move a little.
+    const newFocus = { re: this.hx[this.focus], im: this.hy[this.focus] };
+    const centerTo = oldFocus ? fromOrigin(toOrigin(centerFrom, oldFocus), newFocus) : newFocus;
+    this.center = centerFrom;
+    this.gx = new Float64Array(n);
+    this.gy = new Float64Array(n);
+    this.gfx = new Float64Array(n);
+    this.gfy = new Float64Array(n);
+    this.growth = { start: performance.now(), duration: 950, fromH, fromF, camera: { from: centerFrom, to: centerTo } };
+    // A flight under way was aimed at the old layout; re-aim it at the focused node's new place.
+    if (this.flight) this.flyTo(this.nodes[this.focus].id);
+    this.invalidate();
   }
 
   setMode(mode: Mode) {
@@ -332,6 +379,7 @@ export class Universe {
 
   // Glide the centre of the disk to `point` (and the flat view to `flatTo` at `zoomTo`).
   private flyToPoint(point: C, flatTo: Pt, zoomTo: number) {
+    if (this.growth) this.growth.camera = null; // the flight drives the camera from here
     const target = toOrigin(point, this.center);
     const distance = 2 * Math.atanh(Math.min(Math.hypot(target.re, target.im), 1 - 1e-12));
     const duration = 650 + 150 * Math.min(distance, 4);
@@ -382,6 +430,22 @@ export class Universe {
       const t = clamp01((now - m.start) / m.duration);
       this.blend = lerp(m.from, m.to, easeInOut(t));
       if (t >= 1) this.morph = null;
+      active = true;
+    }
+    if (this.growth) {
+      const g = this.growth;
+      const t = clamp01((now - g.start) / g.duration);
+      const e = 1 - Math.pow(1 - t, 3); // ease out: branches shoot out, then settle
+      for (let i = 0; i < this.nodes.length; i++) {
+        const from = { re: g.fromH[2 * i], im: g.fromH[2 * i + 1] };
+        const z = fromOrigin(alongGeodesic(toOrigin({ re: this.hx[i], im: this.hy[i] }, from), e), from);
+        this.gx[i] = z.re;
+        this.gy[i] = z.im;
+        this.gfx[i] = lerp(g.fromF[2 * i], this.fx[i], e);
+        this.gfy[i] = lerp(g.fromF[2 * i + 1], this.fy[i], e);
+      }
+      if (g.camera) this.center = fromOrigin(alongGeodesic(toOrigin(g.camera.to, g.camera.from), e), g.camera.from);
+      if (t >= 1) this.growth = null;
       active = true;
     }
     if (this.zoomAnimation) {
@@ -483,8 +547,8 @@ export class Universe {
     const { re: cr, im: ci } = this.center;
     const m = this.blend;
     for (let i = 0; i < this.nodes.length; i++) {
-      const zr = this.hx[i];
-      const zi = this.hy[i];
+      const zr = this.growth ? this.gx[i] : this.hx[i];
+      const zi = this.growth ? this.gy[i] : this.hy[i];
       const nr = zr - cr;
       const ni = zi - ci;
       const dr = 1 - (cr * zr + ci * zi);
@@ -494,8 +558,8 @@ export class Universe {
       let y = (ni * dr - nr * di) / d;
       let f = Math.max(0, 1 - (x * x + y * y));
       if (m > 0) {
-        const ex = (this.fx[i] - this.flatCenter.x) * this.zoom;
-        const ey = (this.fy[i] - this.flatCenter.y) * this.zoom;
+        const ex = ((this.growth ? this.gfx[i] : this.fx[i]) - this.flatCenter.x) * this.zoom;
+        const ey = ((this.growth ? this.gfy[i] : this.fy[i]) - this.flatCenter.y) * this.zoom;
         x += (ex - x) * m;
         y += (ey - y) * m;
         f += (0.5 - f) * m;
@@ -808,6 +872,7 @@ export class Universe {
   // Drag the plane: the point under the cursor follows it, by a hyperbolic translation.
   private pan(x0: number, y0: number, x1: number, y1: number) {
     this.flight = null;
+    if (this.growth) this.growth.camera = null;
     if (this.blend < 0.5) {
       const toDisk = (x: number, y: number): C => {
         const re = (x - this.ox) / this.radius;
