@@ -1,98 +1,101 @@
-# Hyperspace 2.0
+# Hyperspace
 
-### A living AI knowledge universe
+### Explore knowledge by bending space
 
-Hyperspace turns complex information into an interactive universe that you can explore by bending space.
-
-Instead of scrolling through folders or zooming into a crowded mind map, users navigate a hyperbolic disk. Selected concepts move into the centre while surrounding branches remain visible, helping users explore details without losing context.
+Hyperspace turns 2,475 Wikipedia topics about artificial intelligence into a universe you explore on a **Poincaré disk**. Click any topic and the whole map transforms around it: what you focus on grows into the readable centre while every other branch stays in view, compressed toward the rim.
 
 Built for **StormHacks 2026** by **Karn, Navjot and Dilpreet**.
 
-## The Problem
+## The problem
 
-Large knowledge collections are difficult to navigate. Lists hide connections, and traditional node diagrams become crowded as information grows.
+Large knowledge collections are hard to navigate. Lists hide how ideas connect, and node diagrams turn into hairballs once they grow past a few hundred nodes.
 
-We want to make exploring thousands of connected concepts feel intuitive and engaging.
+## Our approach
 
-## Our Approach
+In hyperbolic space the room available grows exponentially with distance from the centre, just as a tree's node count grows with depth. So the whole hierarchy fits in one view, with the focus large and its context small, instead of zooming in and losing your place.
 
-Hyperspace uses the **Poincaré disk**, a model of hyperbolic geometry, to display hierarchical information.
+## Features
 
-The focused region expands into the readable centre. Distant branches compress toward the boundary. Clicking a concept transforms the entire map around it.
+- **Hyperbolic navigation.** Click a topic and it glides to the centre along a Möbius transformation; edges are geodesics. Drag or scroll to move through the plane, and pinch or use + and − to zoom.
+- **Search by meaning.** Type a topic or describe it ("robots that look like people"). TiDB runs vector and full-text search side by side, and results are ranked by meaning with bonuses for keyword and title matches. Enter frames every match at once; the rest of the map fades back.
+- **Ask Hyperspace.** Ask a question ("What is the difference between machine learning and deep learning?"). TiDB finds the relevant topics, and Gemini answers from their summaries only, citing each one. Citations are clickable, and the cited topics light up on the map.
+- **Grow with Gemini.** On any topic, Gemini picks related Wikipedia pages to grow as new branches and says why each belongs. Branches grow out along geodesics, can be grown again, and are cached in TiDB.
+- **How are these connected?** Pick two topics. The camera travels the path between them, and Gemini explains the link.
+- **Geometry lens (G).** Rings of equal hyperbolic distance show why the edge has so much room. Hovering a topic draws rings around it and reports how far it is from the centre.
+- **Flat view.** The same tree in flat space, with the same angles and evenly spaced rings, crowds at the edge. That makes the case for hyperbolic space in one click.
+- **Listen.** Topic cards, answers and connections can be read aloud with ElevenLabs. This needs a key; without one the buttons don't appear.
+- **Shareable links.** The address bar follows the topic you're on (`?topic=<id>`), so any view can be shared or bookmarked.
+- **Also:** light and dark themes (T) and a presentation mode (P). The map itself is a static file, so it works offline; search falls back to keyword matching when the API is unreachable.
 
-AI adds semantic search and helps organize new information as users explore.
+## Running it
 
-## Planned Features
+Requires Node.js 20.12 or newer.
 
-- **Hyperbolic navigation:** Explore a knowledge hierarchy with smooth click and drag interactions.
-- **Semantic search:** Find concepts using natural language through TiDB vector search.
-- **Dynamic expansion:** Grow new branches from a selected topic with Gemini.
-- **Source-backed information:** View article summaries and links to their Wikipedia sources.
-- **Context-aware labels:** Show more detail around the focused region.
-- **Cached exploration:** Load the main universe without waiting for live AI generation.
+```bash
+npm install
+cp .env.example .env.local   # then fill in the keys
+npm run dev                  # http://localhost:3000
+```
 
-## Technology
-
-| Component | Planned technology |
+| Variable | Used for |
 |---|---|
-| Frontend | Next.js, React and TypeScript |
-| Styling | Tailwind CSS |
-| Visualization | d3-hypertree |
-| Knowledge source | Wikipedia / MediaWiki API |
-| AI organization | Google Gemini API |
-| Semantic retrieval | TiDB vector search |
-| Data storage | TiDB and cached JSON |
+| `TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_DATABASE` | Search, Ask, node details and the Grow cache ([TiDB Cloud Starter](https://tidbcloud.com)) |
+| `GEMINI_API_KEY` | Grow, Connect and Ask ([Google AI Studio](https://aistudio.google.com/apikey)) |
+| `GEMINI_MODEL` | Optional; tried before the built-in model list |
+| `ELEVENLABS_API_KEY` | Optional; Listen buttons ([ElevenLabs](https://elevenlabs.io/app/settings/api-keys)) |
 
-## How It Works
+## How it works
 
-### Building the Universe
+```
+Wikipedia ─► pipeline/ingest.mjs ─► nodes.json ─► pipeline/load.mjs + embed.mjs ─► TiDB
+                                        │           (full-text index, VECTOR(1024), expansions cache)
+                                        ▼                                  ▲
+                         Next.js app: canvas Poincaré disk                 │
+                         components/universe/Universe.ts      /api/search, /api/ask, /api/node
+                                        │                                  │
+                                        └─ /api/expand, /api/connect, /api/ask ─► Gemini
+```
 
-1. Retrieve real articles and category relationships from Wikipedia.
-2. Filter duplicates, maintenance categories and cycles.
-3. Build a hierarchy from the category graph, breadth first, so each page keeps its shallowest parent.
-4. Generate embeddings and store searchable nodes in TiDB.
-5. Render the hierarchy in the hyperbolic interface.
+**Data.** `pipeline/ingest.mjs` crawls Wikipedia's category graph breadth-first from *Category:Artificial intelligence*, so each page keeps its shallowest parent and cycles are broken. It filters out people, organisations, media, events, lists and maintenance categories, and prunes by article length: 249 categories and 2,226 articles, up to 4 levels deep. `load.mjs` writes them to TiDB with root-to-node paths. `embed.mjs` fills a `VECTOR(1024)` column inside TiDB with its built-in `EMBED_TEXT` model, embedding each topic with its breadcrumb so short titles keep their context.
 
-Wikipedia categories form a graph, so the displayed hierarchy is an organized view of the source relationships.
+**Layout and rendering.** [`geometry.ts`](components/universe/geometry.ts) lays the tree out in the Poincaré disk (Lamping and Rao): each node fans its children inside a wedge of its own local frame, sized by subtree weight. Recentering applies the disk automorphism z ↦ (z − a) / (1 − āz), and flights follow geodesics. [`Universe.ts`](components/universe/Universe.ts) draws everything on a canvas: edges as circular arcs that meet the rim at right angles, labels placed by available room, and growth animated along geodesics. It only redraws when something changes.
 
-### Searching by Meaning
+**Search** ([`pipeline/lib/api.mjs`](pipeline/lib/api.mjs)). The full-text (BM25) and vector legs run in parallel. Each candidate is scored by cosine similarity, plus 0.12 × its BM25 relative to the best keyword hit, plus a title-match bonus. Ranking by meaning first keeps filler words from winning.
 
-The user's query is converted into an embedding. TiDB retrieves semantically relevant concepts, and the visualization highlights those regions and moves toward the selected result.
+**Gemini** ([`gemini.mjs`](pipeline/lib/gemini.mjs), [`expand.mjs`](pipeline/lib/expand.mjs), [`connect.mjs`](pipeline/lib/connect.mjs), [`ask.mjs`](pipeline/lib/ask.mjs)). Every call asks for strict JSON and validates it. Grow may only choose from real Wikipedia candidates, and Ask may only cite the topics TiDB retrieved. Models are tried in turn, since model ids get retired and the newest one is often busy.
 
-### Growing New Branches
+## API
 
-Press **Grow with Gemini** on any topic's card. The server gathers candidate Wikipedia pages: a category's members, or the links in an article's intro and "See also" section. The same filters as the ingest drop people, companies, places and media. Gemini then picks up to eight that belong under the topic and says why, using only ids from the candidate list, so it can't invent pages. The new branches grow out of the topic along geodesics, and each shows "Why Gemini added it" on its card. Grown topics can be grown again.
+| Endpoint | Request | Response |
+|---|---|---|
+| `POST /api/search` | `{ query }` | `{ matches: [{ id, title, score, path }], focusNodeId }` |
+| `POST /api/ask` | `{ question }` | `{ answer, sources: [{ id, title }], model }` |
+| `POST /api/expand` | `{ nodeId, depth? }` | `{ parentId, children: [Node + reason], model }` |
+| `POST /api/connect` | `{ from, to, path }` | `{ explanation, model }` |
+| `GET /api/node/:id` | | `Node` + `path` (root → node) |
+| `GET, POST /api/speak` | `{ text }` | `{ enabled }` / `audio/mpeg` |
 
-## SHAPES THAT NEEDED TO BE MATCHED
-nodes.json:          [{ id, title, summary, parentId, depth, url, type }]
-POST /api/search     {query} → { matches: [{ id, title, score, path: [ids] }], focusNodeId }
-GET  /api/node/:id   → Node + path: [ids]
-POST /api/expand     {nodeId, depth?} → { parentId, children: [Node + reason], model }
+`Node` is `{ id, title, summary, parentId, depth, url, type }`. Ids are Wikipedia page ids.
 
-Renderer API (Navjot builds, Karn calls):
-  loadTree(nodes)
-  flyTo(id)
-  highlight(ids)
-  addChildren(parentId, nodes)
-  setMode("hyperbolic" | "euclid")
-  onSelect(callback)  ← fires with the node when the user clicks
+## Data pipeline
 
-## Keeping It Fast
+```bash
+cd pipeline && npm install
+npm run check    # TiDB connection, vector + full-text support, Gemini key
+npm run ingest   # Wikipedia → data/nodes.json
+npm run load     # nodes.json → TiDB
+npm run embed    # fill embeddings inside TiDB
+npm test         # data, search and API checks
+```
 
-The main dataset is prepared and cached ahead of time. Ordinary navigation happens in the browser.
+The pipeline reads `.env.local` at the repo root. `npm run dev` and `npm run build` copy `pipeline/data/nodes.json` to `public/nodes.json`.
 
-Each Expand asks Gemini once, with all its candidates, rather than once per node. Gemini's picks are cached in TiDB (the `expansions` table), so repeating an Expand is instant. If a Gemini model is busy or retired, the next one in a short list is tried.
+## Hackathon tracks
 
-The core visualization is designed to remain usable with cached data when external services are unavailable.
-
-## Hackathon Tracks
-
-We are building toward:
-
-- **Huawei Beyond Euclid:** Non-Euclidean geometry forms the foundation of the interface.
-- **TiDB x AI Open Build:** Vector search powers semantic navigation.
-- **Best Use of Gemini API:** Gemini helps organize and expand the knowledge universe.
-- **Best Design:** The interface focuses on fluid motion, readable concepts and spatial exploration.
+- **Huawei Beyond Euclid:** the interface is non-Euclidean throughout: Poincaré layout, Möbius recentering, geodesic edges and flights, and a geometry lens that explains them.
+- **TiDB x AI Open Build:** hybrid vector and full-text search, embeddings computed inside TiDB, retrieval for Ask, and the Grow cache.
+- **Best Use of Gemini API:** Gemini grows the map, explains connections and answers questions, each grounded in Wikipedia.
+- **Best Design:** fluid motion, readable labels, light and dark themes, and spatial exploration.
 
 ## Team
 
@@ -100,12 +103,8 @@ We are building toward:
 - **Navjot**
 - **Dilpreet**
 
-## Project Status
-
-Hyperspace 2.0 is under active development during StormHacks 2026. The features and technology above describe our intended implementation.
-
 ## Acknowledgments
 
-Hyperspace builds on existing hyperbolic visualization research and open-source tools, including d3-hypertree.
+The hyperbolic tree layout follows Lamping and Rao's hyperbolic browser.
 
-Knowledge content comes from Wikipedia. Source attribution and applicable content licensing must be preserved.
+Topic summaries come from [Wikipedia](https://en.wikipedia.org), available under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Each topic links back to its source article.
