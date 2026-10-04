@@ -6,7 +6,7 @@ Hyperspace turns complex information into an interactive universe that you can e
 
 Instead of scrolling through folders or zooming into a crowded mind map, users navigate a hyperbolic disk. Selected concepts move into the centre while surrounding branches remain visible, helping users explore details without losing context.
 
-Built for **StormHacks 2026**.
+Built for **StormHacks 2026** by **Karn, Navjot and Dilpreet**.
 
 ## The Problem
 
@@ -43,7 +43,9 @@ AI adds semantic search and helps organize new information as users explore.
 | Semantic retrieval | TiDB vector search |
 | Data storage | TiDB and cached JSON |
 
-## How the Data Works
+## How It Works
+
+### Building the Universe
 
 1. Retrieve real articles and category relationships from Wikipedia.
 2. Filter duplicates, maintenance categories and cycles.
@@ -51,11 +53,15 @@ AI adds semantic search and helps organize new information as users explore.
 4. Generate embeddings and store searchable nodes in TiDB.
 5. Render the hierarchy in the hyperbolic interface.
 
-When a user searches, TiDB retrieves relevant concepts and the visualization moves toward them.
-
-When a user expands a topic, the app retrieves related source material, organizes it and adds new branches.
-
 Wikipedia categories form a graph, so the displayed hierarchy is an organized view of the source relationships.
+
+### Searching by Meaning
+
+The user's query is converted into an embedding. TiDB retrieves semantically relevant concepts, and the visualization highlights those regions and moves toward the selected result.
+
+### Growing New Branches
+
+When a user expands a topic, the app retrieves related source material. Gemini helps organize that information into new branches, which appear in the existing universe.
 
 ## Keeping It Fast
 
@@ -63,25 +69,26 @@ The main dataset is prepared and cached ahead of time. Ordinary navigation happe
 
 Gemini processes groups of concepts rather than making one request per node. Successful expansions are cached for reuse.
 
+The core visualization is designed to remain usable with cached data when external services are unavailable.
+
 ## Hackathon Tracks
 
 We are building toward:
 
-- Huawei Beyond Euclid
-- TiDB x AI Open Build
-- Best Use of Gemini API
-- Best Design
-
-## Development Status
-
-The project is under active development. Setup instructions, screenshots and the demo link will be added as the implementation takes shape.
+- **Huawei Beyond Euclid:** Non-Euclidean geometry forms the foundation of the interface.
+- **TiDB x AI Open Build:** Vector search powers semantic navigation.
+- **Best Use of Gemini API:** Gemini helps organize and expand the knowledge universe.
+- **Best Design:** The interface focuses on fluid motion, readable concepts and spatial exploration.
 
 ## Team
 
-- [Name] — Visualization and frontend
-- [Name] — Data pipeline and TiDB search
-- [Name] — Gemini and topic expansion
-- [Name] — Integration and presentation
+- **Karn**
+- **Navjot**
+- **Dilpreet**
+
+## Project Status
+
+Hyperspace 2.0 is under active development during StormHacks 2026. The features and technology above describe our intended implementation.
 
 ## Acknowledgments
 
