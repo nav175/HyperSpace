@@ -1,13 +1,14 @@
-// Step 1 check. Run it after filling in .env.local:
+// Setup check. Run it after filling in .env.local:
 //   cd pipeline && npm install && npm run check
-// Tests the TiDB connection, vector and full-text support, and the Gemini key, then
-// runs one real semantic search through both. Safe to re-run: it creates the
-// database if it's missing and drops the scratch tables it makes.
+// Tests the TiDB connection, vector and full-text support, TiDB's free embedding model and
+// the Gemini key, then runs one real semantic search. Spends no Gemini quota. Safe to re-run:
+// it creates the database if it's missing and drops the scratch tables it makes.
 import { existsSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { DB_NAME, connect, toVector } from './lib/db.mjs';
+import { DB_NAME, connect } from './lib/db.mjs';
+import { EMBED_DIM, EMBED_MODEL, embedQuery } from './lib/embedding.mjs';
 import { ENV_FILE, missingEnv } from './lib/env.mjs';
-import { EMBED_DIM, EMBED_MODEL, asDocument, asQuery, embedBatch, listEmbeddingModels } from './lib/gemini.mjs';
+import { checkGeminiKey } from './lib/gemini.mjs';
 
 const REGION_FIX =
   'Full-text search only runs on Starter in AWS Oregon (us-west-2), N. Virginia, Tokyo, Frankfurt or Singapore. ' +
@@ -85,55 +86,54 @@ if (db) {
   } catch (error) {
     bad('Full-text index', error.message, REGION_FIX);
   }
+
+  try {
+    const [[{ dims }]] = await db.query('SELECT VEC_DIMS(EMBED_TEXT(?, ?)) AS dims', [EMBED_MODEL, 'hello']);
+    if (dims === EMBED_DIM) ok(`Embeddings from ${EMBED_MODEL}`, `${dims} dimensions`);
+    else bad('Embeddings', `expected ${EMBED_DIM} dimensions, got ${dims}`);
+  } catch (error) {
+    bad('Embeddings', error.message, 'TiDB auto embedding needs a TiDB Cloud Starter cluster on AWS');
+  }
 }
 
-console.log('\n3. Gemini');
+console.log('\n3. Gemini (used by Expand)');
+if (geminiMissing.length) {
+  console.log('  (skipped)');
+} else {
+  try {
+    await checkGeminiKey();
+    ok('Key works');
+  } catch (error) {
+    bad('Gemini key', error.cause?.message || error.message, 'Check the key at https://aistudio.google.com/apikey');
+  }
+}
+
+console.log('\n4. Semantic search, end to end');
 const docs = [
   ['Computer vision', 'Computer vision is the field of AI that lets computers interpret and understand images and video.'],
   ['Natural language processing', 'Natural language processing studies how computers understand and generate human language.'],
   ['Reinforcement learning', 'Reinforcement learning trains agents to make decisions by rewarding good actions.'],
 ];
 const query = 'AI that understands images';
-let vectors;
-if (geminiMissing.length) {
-  console.log('  (skipped)');
+if (!db || problems.includes('Embeddings')) {
+  console.log('  (skipped: needs TiDB and its embedding model working)');
 } else {
   try {
-    vectors = await embedBatch([...docs.map(([title, text]) => asDocument(title, text)), asQuery(query)]);
-    const dim = vectors[0].length;
-    ok(`Embeddings from ${EMBED_MODEL}`, `${dim} dimensions`);
-    if (dim !== EMBED_DIM) note('Dimension mismatch', `asked for ${EMBED_DIM}, got ${dim}. Set EMBED_DIM=${dim} in .env.local`);
-  } catch (error) {
-    let fix = 'Check the key at https://aistudio.google.com/apikey';
-    if (error.status === 404) {
-      const models = await listEmbeddingModels();
-      if (models.length) fix = `This key can't use ${EMBED_MODEL}. Set GEMINI_EMBED_MODEL in .env.local to one of: ${models.join(', ')}`;
-    } else if (error.status === 429) {
-      fix = 'Rate limit or quota. Wait a minute and re-run.';
-    }
-    bad('Embeddings', error.cause?.message || error.message, fix);
-  }
-}
-
-console.log('\n4. Semantic search, end to end');
-if (!db || !vectors) {
-  console.log('  (skipped: needs TiDB and Gemini both working)');
-} else {
-  try {
-    const queryVector = toVector(vectors.at(-1));
-    await db.query(`CREATE TABLE _check_search (id INT PRIMARY KEY, title VARCHAR(255), embedding VECTOR(${vectors[0].length}))`);
-    await db.query('INSERT INTO _check_search (id, title, embedding) VALUES ?', [
-      docs.map(([title], i) => [i + 1, title, toVector(vectors[i])]),
-    ]);
+    await db.query(`CREATE TABLE _check_search (id INT PRIMARY KEY, title VARCHAR(255), embedding VECTOR(${EMBED_DIM}))`);
+    await db.query(
+      `INSERT INTO _check_search (id, title, embedding) VALUES ${docs.map(() => '(?, ?, EMBED_TEXT(?, ?))').join(', ')}`,
+      docs.flatMap(([title, text], i) => [i + 1, title, EMBED_MODEL, `${title}: ${text}`])
+    );
+    const vector = await embedQuery(db, query);
     const [rows] = await db.query(
       `SELECT title, 1 - VEC_COSINE_DISTANCE(embedding, ?) AS score
        FROM _check_search ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT 3`,
-      [queryVector, queryVector]
+      [vector, vector]
     );
     console.log(`  "${query}"`);
     for (const row of rows) console.log(`     ${Number(row.score).toFixed(3)}  ${row.title}`);
     if (rows[0]?.title === docs[0][0]) ok('TiDB ranked Computer vision first');
-    else bad('Ranking', `expected Computer vision first, got ${rows[0]?.title}`, 'The embedding templates in lib/gemini.mjs look wrong');
+    else bad('Ranking', `expected Computer vision first, got ${rows[0]?.title}`);
   } catch (error) {
     bad('Search', error.message);
   }
@@ -147,7 +147,7 @@ if (db) {
 console.log(
   problems.length
     ? `\n${problems.length} problem(s): ${problems.join(', ')}. Fix the → lines above and re-run.\n`
-    : '\nStep 1 done. Send .env.local to Karn and Navjot privately (a DM, not the repo).\n'
+    : '\nAll good. Share .env.local with Karn and Navjot privately (a DM, not the repo).\n'
 );
 
 async function createTable(sql) {

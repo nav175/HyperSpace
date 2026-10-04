@@ -1,13 +1,19 @@
 // Step 3: load data/nodes.json into TiDB, the store behind /api/node and /api/search.
-//   npm run load              # create the table if needed, then replace every row
-//   npm run load -- --reset   # drop and recreate the table first, after a schema change
-// Replacing rows clears their embeddings; the embedding step refills them.
+//   npm run load                  # create the tables if needed, then replace every node row
+//   npm run load -- --reset       # drop and recreate the nodes table first, after a schema change
+//   npm run load -- --schema-only # only apply schema.sql (e.g. a new table); rows untouched
+// Replacing rows clears their embeddings; `npm run embed` refills them.
 import { readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { DB_NAME, connect } from './lib/db.mjs';
 
-const { values: opts } = parseArgs({ options: { reset: { type: 'boolean', default: false } } });
+const { values: opts } = parseArgs({
+  options: {
+    reset: { type: 'boolean', default: false },
+    'schema-only': { type: 'boolean', default: false },
+  },
+});
 const readData = (name) => JSON.parse(readFileSync(new URL(`data/${name}`, import.meta.url), 'utf8'));
 const nodes = readData('nodes.json');
 const { datasetVersion } = readData('nodes.meta.json');
@@ -20,7 +26,23 @@ for (const node of nodes) {
   paths.set(node.id, [...parentPath, node.id]);
 }
 
-console.log(`Loading ${nodes.length} nodes (${datasetVersion}) into ${DB_NAME}.nodes`);
+// What gets embedded. The breadcrumb (without the shared root) gives short or ambiguous titles
+// like "Agent" or "Attention" their context.
+const titleOf = new Map(nodes.map((node) => [node.id, node.title]));
+function embedText(node) {
+  const breadcrumb = paths
+    .get(node.id)
+    .slice(1, -1)
+    .map((id) => titleOf.get(id))
+    .join(' > ');
+  return `${node.title}${breadcrumb ? ` (${breadcrumb})` : ''}: ${node.summary}`;
+}
+
+console.log(
+  opts['schema-only']
+    ? `Applying schema.sql to ${DB_NAME}`
+    : `Loading ${nodes.length} nodes (${datasetVersion}) into ${DB_NAME}.nodes`
+);
 const db = await connect();
 try {
   if (opts.reset) await db.query('DROP TABLE IF EXISTS nodes');
@@ -29,7 +51,15 @@ try {
     await db.query(statement);
   }
   console.log('  ✓ schema ready');
+  if (!opts['schema-only']) await loadRows();
+} catch (error) {
+  await db.rollback().catch(() => {});
+  throw error;
+} finally {
+  await db.end();
+}
 
+async function loadRows() {
   // One transaction, so the API never sees a half-loaded table.
   await db.beginTransaction();
   await db.query('DELETE FROM nodes');
@@ -44,10 +74,11 @@ try {
       node.type,
       JSON.stringify(paths.get(node.id)),
       `${node.title}. ${node.summary}`,
+      embedText(node),
       datasetVersion,
     ]);
     await db.query(
-      'INSERT INTO nodes (id, title, summary, parent_id, depth, url, type, path, search_text, dataset_version) VALUES ?',
+      'INSERT INTO nodes (id, title, summary, parent_id, depth, url, type, path, search_text, embed_text, dataset_version) VALUES ?',
       [rows]
     );
   }
@@ -59,8 +90,6 @@ try {
   const sample = nodes.find((node) => node.title === 'Vision transformer') ?? nodes.at(-1);
   const [[row]] = await db.query('SELECT id, title, path FROM nodes WHERE id = ?', [sample.id]);
   const path = typeof row.path === 'string' ? JSON.parse(row.path) : row.path;
-  const [pathRows] = await db.query('SELECT id, title FROM nodes WHERE id IN (?)', [path]);
-  const titleOf = new Map(pathRows.map((pathRow) => [Number(pathRow.id), pathRow.title]));
   console.log(`  ✓ lookup ${row.id}: ${path.map((id) => titleOf.get(id)).join(' › ')}`);
 
   // Full-text search reads a columnar replica that catches up a few seconds after a write.
@@ -72,14 +101,9 @@ try {
     );
     if (hits.length) {
       console.log(`  ✓ full-text "${query}": ${hits.map((hit) => hit.title).join(', ')}`);
-      break;
+      return;
     }
     if (attempt === 10) console.log('  ! full-text search has no results yet; the index may still be catching up. Re-run to check.');
     else await sleep(3000);
   }
-} catch (error) {
-  await db.rollback().catch(() => {});
-  throw error;
-} finally {
-  await db.end();
 }
