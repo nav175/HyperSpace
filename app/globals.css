@@ -1024,9 +1024,109 @@ html[data-intro] .dock {
   position: fixed;
   inset: 0;
   z-index: 21;
-  pointer-events: none;
   color: #f5f5f7;
   font-family: var(--font-display);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none; /* it covers the page, so stray clicks land here rather than on the map */
+}
+
+/* The titles are only to look at; clicks go through them to the play button. */
+.intro-line,
+.intro-count,
+.intro-wordmark,
+.intro-tagline {
+  pointer-events: none;
+}
+
+/* The play button it waits at, ringed in the universe's colours, with a ring breathing out from it. */
+.intro-gate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+}
+
+.intro-play {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 48px rgba(94, 92, 230, 0.28);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  transition: background 0.2s ease, transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.intro-play:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.04);
+}
+
+.intro-play:active {
+  transform: scale(0.95);
+}
+
+.intro-play svg {
+  width: 32px;
+  height: 32px;
+  fill: #f5f5f7;
+}
+
+.intro-play::before,
+.intro-play::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.intro-play::before {
+  background: conic-gradient(from 0deg, #bf5af2, #5e5ce6, #0a84ff, #5ac8fa, #30d158, #bf5af2);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
+  animation: spin 6s linear infinite;
+}
+
+.intro-play::after {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  animation: intro-breathe 2.6s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+@keyframes intro-breathe {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+
+.intro-gate p {
+  font-family: var(--font);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  color: rgba(235, 235, 245, 0.5);
+}
+
+.intro-gate kbd {
+  margin: 0 3px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  font: inherit;
+  font-size: 11.5px;
+  color: rgba(235, 235, 245, 0.78);
 }
 
 .intro-line,

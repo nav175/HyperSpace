@@ -167,8 +167,9 @@ export class Universe {
   private lensWeight = new Float32Array(0); // per node: 0 outside the lens, up to 1 at its centre
   private branchTop: number[] = []; // each field's top-level node
   private branchSize: number[] = [];
-  private intro: number | null = null; // 0 → 1 while the opening titles unfold the universe (setIntro)
+  private intro: number | null = null; // 0 → 1 while the universe unfolds (unfold, or the opening titles' setIntro)
   private introAlpha = new Float32Array(0); // per node, how far it has faded in during the unfolding
+  private unfolding: { start: number; duration: number } | null = null; // an unfold() playing by itself
   private readonly calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   private width = 0;
@@ -423,6 +424,8 @@ export class Universe {
     clearTimeout(this.settleTimer);
     this.settleTimer = setTimeout(() => {
       if (this.flight || this.pointer?.dragging || !this.settleHandler) return;
+      // Mid-unfold, topics are still on their way out from the centre; wait until they're in place.
+      if (this.intro !== null) return this.settleSoon(250);
       let nearest = -1;
       let best = (this.radius * 0.22) ** 2;
       for (let i = 0; i < this.nodes.length; i++) {
@@ -469,14 +472,28 @@ export class Universe {
     this.animateView(1, { x: 0, y: 0 }, 480);
   }
 
-  // The opening titles (?intro) unfold the universe from its centre: at 0 nothing shows yet, and as
-  // `progress` runs to 1 every topic flies out along its geodesic, nearest first, while the rim draws
-  // itself around them. null (or 1) is the universe as usual.
+  // The universe unfolds from its centre: at 0 nothing shows yet, and as `progress` runs to 1 every
+  // topic flies out along its geodesic, nearest first, while the rim draws itself around them. null
+  // (or 1) is the universe as usual. The opening titles (?intro) drive this frame by frame.
   setIntro(progress: number | null) {
+    this.unfolding = null;
+    this.applyIntro(progress);
+    this.invalidate();
+  }
+
+  // Plays the unfolding by itself, as the page loads. The clock starts on the first frame drawn, so
+  // the work of loading the page doesn't eat into it.
+  unfold(duration = 2300) {
+    if (this.calm) return this.setIntro(null);
+    this.applyIntro(0);
+    this.unfolding = { start: -1, duration };
+    this.invalidate();
+  }
+
+  private applyIntro(progress: number | null) {
     this.intro = progress === null || progress >= 1 ? null : Math.max(0, progress);
     if (this.intro === null) this.introAlpha.fill(1);
     this.applyView();
-    this.invalidate();
   }
 
   setTheme(name: ThemeName) {
@@ -588,6 +605,14 @@ export class Universe {
       }
       if (g.camera) this.center = fromOrigin(alongGeodesic(toOrigin(g.camera.to, g.camera.from), e), g.camera.from);
       if (t >= 1) this.growth = null;
+      active = true;
+    }
+    if (this.unfolding) {
+      const u = this.unfolding;
+      if (u.start < 0) u.start = now;
+      const t = clamp01((now - u.start) / u.duration);
+      this.applyIntro(t);
+      if (t >= 1) this.unfolding = null;
       active = true;
     }
     if (this.zoomAnimation) {
@@ -1218,13 +1243,19 @@ export class Universe {
   // ── Interaction ──────────────────────────────────────────────────────────────────────
 
   private nodeAt(x: number, y: number): number {
-    for (let k = this.labels.length - 1; k >= 0; k--) {
-      const label = this.labels[k];
-      if (x >= label.x && x <= label.x + label.w && y >= label.y && y <= label.y + label.h) return label.i;
+    // While the universe unfolds, only what has already appeared can be hovered or clicked: labels
+    // once they're half faded in, topics once they're half visible.
+    const unfolding = this.intro !== null;
+    if (!unfolding || this.intro! >= 0.8) {
+      for (let k = this.labels.length - 1; k >= 0; k--) {
+        const label = this.labels[k];
+        if (x >= label.x && x <= label.x + label.w && y >= label.y && y <= label.y + label.h) return label.i;
+      }
     }
     let best = -1;
     let bestDistance = Infinity;
     for (let i = 0; i < this.nodes.length; i++) {
+      if (unfolding && this.introAlpha[i] < 0.5) continue;
       const reach = this.nodeRadius(i) + 7;
       const d = (this.sx[i] - x) ** 2 + (this.sy[i] - y) ** 2;
       if (d < reach * reach && d < bestDistance) {

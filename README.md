@@ -27,6 +27,7 @@ In hyperbolic space the room available grows exponentially with distance from th
 - **Flat view.** The same tree in flat space, with the same angles and evenly spaced rings, crowds at the edge. That makes the case for hyperbolic space in one click.
 - **Listen.** Topic cards, answers and connections can be read aloud with ElevenLabs. This needs a key; without one the buttons don't appear.
 - **Shareable links.** The address bar follows the topic you're on (`?topic=<id>`), so any view can be shared or bookmarked.
+- **Opening.** Each time the page loads, the universe unfolds from its centre: every topic flies out along its geodesic, nearest first, while the rim draws itself. For demos, `?intro` adds opening titles in front of it; they wait at a play button until you press Space (Esc skips them).
 - **Also:** light and dark themes (T) and a presentation mode (P). The map itself is a static file, so it works offline; search falls back to keyword matching when the API is unreachable.
 
 ## Running it

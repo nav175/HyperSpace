@@ -4,13 +4,16 @@ import { useEffect, useRef } from 'react';
 
 // The opening titles, played when the address has ?intro: a line on black, the count of topics, the
 // wordmark, then the universe unfolds behind it and the wordmark flies up into the header as the rest of
-// the page lands around it. Every frame is a pure function of the time since it started, so
-// ?intro=capture can step through it frame by frame (window.hyperspaceIntro.seek) to render a video.
+// the page lands around it. They wait at a play button first, so a presenter can start them on cue.
+// Every frame is a pure function of the time since the start, so ?intro=capture can step through it
+// frame by frame (window.hyperspaceIntro.seek) to render a video.
 
 export type IntroMode = 'live' | 'capture';
 
 const LINE = ['Every', 'idea', 'is', 'connected.'];
 export const INTRO_DURATION = 9.4; // seconds
+// Keys that start it: Space, Enter, and what presentation clickers send for "next".
+const START_KEYS = new Set([' ', 'Enter', 'ArrowRight', 'PageDown']);
 
 const segment = (t: number, from: number, to: number) => Math.min(1, Math.max(0, (t - from) / (to - from)));
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -49,6 +52,8 @@ export default function Intro({
   const markRef = useRef<HTMLDivElement>(null);
   const shineRef = useRef<HTMLSpanElement>(null);
   const taglineRef = useRef<HTMLParagraphElement>(null);
+  const gateRef = useRef<HTMLDivElement>(null);
+  const playRef = useRef<() => void>(() => {});
   const props = useRef({ count, onUnfold, onDone });
   useEffect(() => {
     props.current = { count, onUnfold, onDone };
@@ -66,6 +71,16 @@ export default function Intro({
     mark.style.fontSize = `${titleSize * scale}px`;
 
     function render(t: number) {
+      // 0. The play button steps back as the titles begin.
+      const gate = gateRef.current;
+      if (gate) {
+        const gone = easeOut(segment(t, 0, 0.4));
+        gate.style.opacity = String(1 - gone);
+        gate.style.transform = `scale(${1 - 0.12 * gone})`;
+        gate.style.filter = `blur(${gone * 8}px)`;
+        gate.style.visibility = gone >= 1 ? 'hidden' : 'visible';
+      }
+
       // 1. "Every idea is connected." Word by word, out of a blur, then pushed toward you as it goes.
       const lineOut = easeInOut(segment(t, 2.55, 3.0));
       const line = lineRef.current!;
@@ -150,7 +165,7 @@ export default function Intro({
       };
     }
 
-    // Live: played in real time. Any click or key lands on the page straight away.
+    // Live: in real time, once started at the play button. Escape lands on the page at any point.
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
       cleanUp();
       props.current.onUnfold(null);
@@ -158,13 +173,12 @@ export default function Intro({
       return;
     }
     let raf = 0;
+    let start = -1; // when it was started; -1 while it waits at the play button
     let finished = false;
-    const start = performance.now();
     const stop = () => {
       finished = true;
       cancelAnimationFrame(raf);
-      window.removeEventListener('keydown', skip, true);
-      window.removeEventListener('pointerdown', skip, true);
+      window.removeEventListener('keydown', onKey, true);
     };
     const finish = () => {
       if (finished) return;
@@ -173,46 +187,64 @@ export default function Intro({
       props.current.onUnfold(null);
       props.current.onDone();
     };
-    // The key or click that skips the titles shouldn't also do something on the page underneath.
-    const skip = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      finish();
-    };
     const tick = (now: number) => {
       const t = (now - start) / 1000;
       if (t >= INTRO_DURATION) return finish();
       render(t);
       raf = requestAnimationFrame(tick);
     };
+    playRef.current = () => {
+      if (start >= 0 || finished) return;
+      start = performance.now();
+      raf = requestAnimationFrame(tick);
+    };
+    // While the titles are up, keys belong to them rather than the page underneath, as the pointer
+    // does (the overlay covers the page). Browser shortcuts pass through.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') finish();
+      else if (START_KEYS.has(e.key)) playRef.current();
+    };
     render(0);
-    raf = requestAnimationFrame(tick);
-    window.addEventListener('keydown', skip, true);
-    window.addEventListener('pointerdown', skip, true);
+    window.addEventListener('keydown', onKey, true);
     // Unmounting only stops the clock; the page is handed back by finish(), not by a remount.
     return stop;
   }, [mode]);
 
   return (
-    <div className="intro" aria-hidden="true">
-      <p className="intro-line" ref={lineRef}>
+    <div className="intro">
+      {mode === 'live' && (
+        <div className="intro-gate" ref={gateRef}>
+          <button className="intro-play" onClick={() => playRef.current()} aria-label="Play the intro">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.24-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+            </svg>
+          </button>
+          <p>
+            Press <kbd>space</kbd> to play
+          </p>
+        </div>
+      )}
+      <p className="intro-line" ref={lineRef} aria-hidden="true">
         {LINE.map((word, i) => (
           <span key={i} className={i === LINE.length - 1 ? 'intro-accent' : undefined}>
             {word}
           </span>
         ))}
       </p>
-      <div className="intro-count" ref={countRef}>
+      <div className="intro-count" ref={countRef} aria-hidden="true">
         <strong ref={numberRef}>0</strong>
         <span ref={captionRef}>topics in artificial intelligence, mapped from Wikipedia.</span>
       </div>
-      <div className="intro-wordmark" ref={markRef}>
+      <div className="intro-wordmark" ref={markRef} aria-hidden="true">
         <span>Hyperspace</span>
         <span className="intro-shine" ref={shineRef}>
           Hyperspace
         </span>
       </div>
-      <p className="intro-tagline" ref={taglineRef}>
+      <p className="intro-tagline" ref={taglineRef} aria-hidden="true">
         Knowledge, in hyperbolic space.
       </p>
     </div>

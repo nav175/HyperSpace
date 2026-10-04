@@ -162,7 +162,10 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     if (!nodes || !canvasRef.current) return;
     const universe = new Universe(canvasRef.current, { fontFamily, theme: themeRef.current });
     universe.loadTree(nodes);
-    if (introRef.current) universe.setIntro(0); // hidden until the titles unfold it
+    // Each time the page loads, the universe unfolds from its centre. The opening titles (?intro) hide
+    // it instead, and unfold it themselves when their moment comes.
+    if (introRef.current) universe.setIntro(0);
+    else universe.unfold();
     universe.onSelect(focusNode);
     universe.onHover(setHovered);
     universe.onSettle((node) => settleRef.current(node));
