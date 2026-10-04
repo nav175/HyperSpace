@@ -1,11 +1,11 @@
-// Tests for the data layer. They spend no Gemini quota unless you opt in:
-//   npm test           # nodes.json + TiDB checks, free to run any time
-//   LIVE=1 npm test    # also embeds one real query (1 Gemini request)
+// Tests for the data layer: nodes.json, then TiDB storage and search. Free to run any time:
+// embeddings come from TiDB's own model, so nothing here spends Gemini quota.
+//   npm test
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
-import { connect, toVector } from './lib/db.mjs';
-import { EMBED_DIM, asQuery, embedBatch } from './lib/gemini.mjs';
+import { connect } from './lib/db.mjs';
+import { EMBED_DIM, embedQuery } from './lib/embedding.mjs';
 
 const readData = (name) => JSON.parse(readFileSync(new URL(`data/${name}`, import.meta.url), 'utf8'));
 const nodes = readData('nodes.json');
@@ -147,17 +147,16 @@ describe('TiDB', () => {
     else assert.equal(row.embedded, row.total);
   });
 
-  test(
-    'a typed query lands on the right region (1 Gemini request)',
-    { skip: !process.env.LIVE && 'spends Gemini quota; run with LIVE=1' },
-    async () => {
-      const [vector] = await embedBatch([asQuery('AI that understands images')]);
-      const [hits] = await db.query(
-        'SELECT title FROM nodes WHERE embedding IS NOT NULL ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT 3',
-        [toVector(vector)]
-      );
-      const titles = hits.map((hit) => hit.title);
-      assert.ok(titles.includes('Computer vision'), titles.join(', '));
-    }
-  );
+  test('a typed query lands in the right region (TiDB embeds the query)', async () => {
+    const vector = await embedQuery(db, 'AI that understands images');
+    const [hits] = await db.query(
+      'SELECT title, path FROM nodes WHERE embedding IS NOT NULL ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT 5',
+      [vector]
+    );
+    const computerVision = byTitle('Computer vision').id;
+    assert.ok(
+      hits.some((hit) => parsePath(hit.path).includes(computerVision)),
+      `no Computer vision node in: ${hits.map((hit) => hit.title).join(', ')}`
+    );
+  });
 });

@@ -1,7 +1,7 @@
 // Step 3: load data/nodes.json into TiDB, the store behind /api/node and /api/search.
 //   npm run load              # create the table if needed, then replace every row
 //   npm run load -- --reset   # drop and recreate the table first, after a schema change
-// Replacing rows clears their embeddings; the embedding step refills them.
+// Replacing rows clears their embeddings; `npm run embed` refills them.
 import { readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
@@ -18,6 +18,18 @@ for (const node of nodes) {
   const parentPath = node.parentId === null ? [] : paths.get(node.parentId);
   if (!parentPath) throw new Error(`${node.title} comes before its parent in nodes.json`);
   paths.set(node.id, [...parentPath, node.id]);
+}
+
+// What gets embedded. The breadcrumb (without the shared root) gives short or ambiguous titles
+// like "Agent" or "Attention" their context.
+const titleOf = new Map(nodes.map((node) => [node.id, node.title]));
+function embedText(node) {
+  const breadcrumb = paths
+    .get(node.id)
+    .slice(1, -1)
+    .map((id) => titleOf.get(id))
+    .join(' > ');
+  return `${node.title}${breadcrumb ? ` (${breadcrumb})` : ''}: ${node.summary}`;
 }
 
 console.log(`Loading ${nodes.length} nodes (${datasetVersion}) into ${DB_NAME}.nodes`);
@@ -44,10 +56,11 @@ try {
       node.type,
       JSON.stringify(paths.get(node.id)),
       `${node.title}. ${node.summary}`,
+      embedText(node),
       datasetVersion,
     ]);
     await db.query(
-      'INSERT INTO nodes (id, title, summary, parent_id, depth, url, type, path, search_text, dataset_version) VALUES ?',
+      'INSERT INTO nodes (id, title, summary, parent_id, depth, url, type, path, search_text, embed_text, dataset_version) VALUES ?',
       [rows]
     );
   }
