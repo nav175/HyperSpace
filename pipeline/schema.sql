@@ -12,9 +12,21 @@ CREATE TABLE IF NOT EXISTS nodes (
   type VARCHAR(16) NOT NULL COMMENT 'category | article',
   path JSON NOT NULL COMMENT 'ids from the root down to this node, inclusive',
   search_text TEXT NOT NULL COMMENT 'title + summary, for full-text search',
-  embedding VECTOR(768) NULL COMMENT 'Gemini embedding, EMBED_DIM wide; filled by the embedding step',
+  embed_text TEXT NOT NULL COMMENT 'title, breadcrumb and summary: what gets embedded',
+  embedding VECTOR(1024) NULL COMMENT 'EMBED_TEXT(tidbcloud_free/amazon/titan-embed-text-v2, embed_text), filled by npm run embed',
   dataset_version VARCHAR(64) NOT NULL,
   KEY idx_parent (parent_id),
   FULLTEXT INDEX idx_search_text (search_text) WITH PARSER MULTILINGUAL,
   VECTOR INDEX idx_embedding ((VEC_COSINE_DISTANCE(embedding)))
+);
+
+-- Expand cache: one row per expanded node and dataset version, holding the `children` array that
+-- POST /api/expand returned, so repeat Expands and demo mode skip Gemini. Draft: confirm with Karn.
+CREATE TABLE IF NOT EXISTS expansions (
+  node_id BIGINT NOT NULL,
+  dataset_version VARCHAR(64) NOT NULL,
+  children JSON NOT NULL COMMENT 'Node objects in the README contract shape',
+  model VARCHAR(128) NOT NULL COMMENT 'model that organised the children',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (node_id, dataset_version)
 );
