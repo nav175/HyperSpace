@@ -16,7 +16,9 @@ In hyperbolic space the room available grows exponentially with distance from th
 
 ## Features
 
-- **Hyperbolic navigation.** Click a topic and it glides to the centre along a Möbius transformation; edges are geodesics. Drag or scroll to move through the plane, and pinch or use + and − to zoom.
+- **Hyperbolic navigation.** Click a topic and it glides to the centre along a Möbius transformation; edges are geodesics. Drag or scroll to move through the plane. Click empty space to zoom into it, and pinch or use + and − to zoom.
+- **Field lens.** Hovering the disk opens a lens around the cursor. Topics spread apart (most near the crowded rim), the field under the cursor lights up in its colour with its name and size, and its topics' names populate around the cursor.
+- **A map that keeps growing.** When you come to rest on a topic with no branches yet, an edge of the map, Gemini grows it automatically. Toggle this with A.
 - **Search by meaning.** Type a topic or describe it ("robots that look like people"). TiDB runs vector and full-text search side by side, and results are ranked by meaning with bonuses for keyword and title matches. Enter frames every match at once; the rest of the map fades back.
 - **Ask Hyperspace.** Ask a question ("What is the difference between machine learning and deep learning?"). TiDB finds the relevant topics, and Gemini answers from their summaries only, citing each one. Citations are clickable, and the cited topics light up on the map.
 - **Grow with Gemini.** On any topic, Gemini picks related Wikipedia pages to grow as new branches and says why each belongs. Branches grow out along geodesics, can be grown again, and are cached in TiDB.
