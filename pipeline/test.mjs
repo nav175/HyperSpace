@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
-import { connect } from './lib/db.mjs';
+import { getCachedExpansion, getNode, saveExpansion } from './lib/api.mjs';
+import { closePool, connect, pool } from './lib/db.mjs';
 import { EMBED_DIM, embedQuery } from './lib/embedding.mjs';
 
 const readData = (name) => JSON.parse(readFileSync(new URL(`data/${name}`, import.meta.url), 'utf8'));
@@ -158,5 +159,40 @@ describe('TiDB', () => {
       hits.some((hit) => parsePath(hit.path).includes(computerVision)),
       `no Computer vision node in: ${hits.map((hit) => hit.title).join(', ')}`
     );
+  });
+});
+
+describe('API functions (lib/api.mjs)', () => {
+  after(async () => {
+    await closePool();
+  });
+
+  test('getNode returns the contract shape plus path', async () => {
+    const sample = byTitle('Vision transformer');
+    const { path, ...node } = await getNode(String(sample.id)); // ids arrive from the URL as strings
+    assert.deepEqual(node, sample);
+    assert.deepEqual(
+      path.map((id) => byId.get(id).title),
+      ['Artificial intelligence', 'Computer vision', 'Vision transformer']
+    );
+  });
+
+  test('getNode returns null for unknown or malformed ids', async () => {
+    assert.equal(await getNode('999999999999'), null);
+    assert.equal(await getNode('abc'), null);
+    assert.equal(await getNode('1; DROP TABLE nodes'), null);
+  });
+
+  test('the expand cache round-trips the children of a node', async () => {
+    const children = [
+      { id: -2, title: 'Test child', summary: 'Test.', parentId: -1, depth: 1, url: 'https://en.wikipedia.org/wiki/Test', type: 'article' },
+    ];
+    try {
+      assert.equal(await getCachedExpansion(-1), null);
+      await saveExpansion(-1, children, 'test');
+      assert.deepEqual(await getCachedExpansion(-1), { parentId: -1, children });
+    } finally {
+      await pool().query('DELETE FROM expansions WHERE node_id = -1');
+    }
   });
 });
