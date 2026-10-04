@@ -2,15 +2,25 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HypertreeCanvas } from "@/components/renderer/HypertreeCanvas";
+import { DEMO_QUERIES } from "@/lib/data/demoQueries";
 import type {
   HypertreeRendererApi,
   Node,
+  NodeDetailResponse,
   RenderMode,
 } from "@/types/contracts";
 
 interface Props {
   nodes: Node[];
   datasetVersion?: string;
+}
+
+function findByTitle(nodes: Node[], title: string): Node | undefined {
+  const q = title.toLowerCase();
+  return (
+    nodes.find((n) => n.title.toLowerCase() === q) ??
+    nodes.find((n) => n.title.toLowerCase().includes(q))
+  );
 }
 
 export function HyperspaceShell({ nodes, datasetVersion }: Props) {
@@ -24,6 +34,14 @@ export function HyperspaceShell({ nodes, datasetVersion }: Props) {
   const [status, setStatus] = useState("Drag to pan · click to swell to center");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+
+  const demoNodes = useMemo(
+    () =>
+      DEMO_QUERIES.map((title) => findByTitle(nodes, title)).filter(
+        (n): n is Node => Boolean(n),
+      ),
+    [nodes],
+  );
 
   useEffect(() => {
     setSelected(root);
@@ -62,12 +80,27 @@ export function HyperspaceShell({ nodes, datasetVersion }: Props) {
     setStatus(next === "hyperbolic" ? "Poincaré disk" : "Flat tree · scroll to zoom");
   };
 
-  const flyToNode = (node: Node) => {
+  const flyToNode = async (node: Node) => {
     setSelected(node);
     setQuery(node.title);
     setSearchOpen(false);
-    setStatus(`Flying to ${node.title}`);
+    setStatus(`Flying to ${node.title}…`);
     apiRef.current?.flyTo(node.id);
+
+    // Enrich card from /api/node when available (don't steal path glow mid-flight).
+    try {
+      const res = await fetch(`/api/node/${node.id}`);
+      if (!res.ok) return;
+      const detail = (await res.json()) as NodeDetailResponse;
+      setSelected(detail);
+      if (detail.path?.length) {
+        setStatus(
+          `Centered on ${detail.title} · path depth ${detail.path.length}`,
+        );
+      }
+    } catch {
+      // offline /api — local flyTo already ran
+    }
   };
 
   const blurb = selected
@@ -127,7 +160,7 @@ export function HyperspaceShell({ nodes, datasetVersion }: Props) {
             }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && matches[0]) flyToNode(matches[0]);
+              if (e.key === "Enter" && matches[0]) void flyToNode(matches[0]);
               if (e.key === "Escape") {
                 setSearchOpen(false);
                 (e.target as HTMLInputElement).blur();
@@ -143,7 +176,7 @@ export function HyperspaceShell({ nodes, datasetVersion }: Props) {
                 <li key={m.id}>
                   <button
                     type="button"
-                    onClick={() => flyToNode(m)}
+                    onClick={() => void flyToNode(m)}
                     className="flex w-full items-baseline justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[var(--accent-soft)]"
                   >
                     <span className="truncate text-[13px] font-medium text-[var(--fg)]">
@@ -156,6 +189,20 @@ export function HyperspaceShell({ nodes, datasetVersion }: Props) {
                 </li>
               ))}
             </ul>
+          )}
+          {demoNodes.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {demoNodes.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => void flyToNode(n)}
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg-elevated)]/75 px-2.5 py-1 text-[11px] font-medium text-[var(--fg-muted)] backdrop-blur-xl transition-colors hover:border-[rgba(0,102,204,0.35)] hover:text-[var(--fg)]"
+                >
+                  {n.title}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>

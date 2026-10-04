@@ -24,8 +24,15 @@ import {
   layoutEuclid,
   layoutHyperbolic,
 } from "@/lib/geometry/layout";
+import {
+  ancestorsOf,
+  pathHighlight,
+  treePath,
+} from "@/lib/geometry/path";
 
-const ANIM_MS = 900;
+const HOP_MS = 320;
+const ANIM_MIN_MS = 560;
+const ANIM_MAX_MS = 2200;
 const GROW_MS = 650;
 const GEODESIC_SAMPLES = 16;
 const BOUNDARY_CULL = 0.94;
@@ -79,6 +86,21 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** Sample focus along geodesic polyline of layout waypoints (Gate C). */
+function sampleWaypoints(points: C[], t: number): C {
+  if (points.length === 0) return ZERO;
+  if (points.length === 1 || t <= 0) return points[0]!;
+  if (t >= 1) return points[points.length - 1]!;
+  const segs = points.length - 1;
+  const x = t * segs;
+  const i = Math.min(segs - 1, Math.floor(x));
+  return geodesicLerp(points[i]!, points[i + 1]!, x - i);
+}
+
+function flightDurationMs(hops: number): number {
+  return Math.min(ANIM_MAX_MS, Math.max(ANIM_MIN_MS, hops * HOP_MS));
+}
+
 interface Props {
   className?: string;
   initialNodes?: Node[];
@@ -130,15 +152,7 @@ export const HypertreeCanvas = forwardRef<HypertreeRendererApi, Props>(
     }, []);
 
     const pathToRoot = useCallback((id: number): number[] => {
-      const path: number[] = [];
-      let cur: number | null | undefined = id;
-      const parents = parentOfRef.current;
-      let guard = 0;
-      while (cur != null && guard++ < 64) {
-        path.push(cur);
-        cur = parents.get(cur) ?? null;
-      }
-      return path;
+      return ancestorsOf(id, parentOfRef.current);
     }, []);
 
     const cancelAnim = useCallback(() => {
@@ -472,56 +486,98 @@ export const HypertreeCanvas = forwardRef<HypertreeRendererApi, Props>(
       };
     }, [draw]);
 
-    const animateFocusTo = useCallback(
-      (target: C, onDone?: () => void) => {
+    const animateAlongPath = useCallback(
+      (waypointIds: number[], settleId: number, onDone?: () => void) => {
         cancelAnim();
-        if (prefersReducedMotion()) {
-          focusRef.current = target;
-          panRef.current = ZERO;
-          animProgressRef.current = 1;
+        const layout = layoutRef.current;
+        const points = waypointIds
+          .map((id) => layout.get(id))
+          .filter((z): z is C => Boolean(z));
+        const target = layout.get(settleId) ?? points[points.length - 1];
+        if (!target) {
           onDone?.();
           return;
         }
-        const from = focusRef.current;
+        if (points.length === 0) points.push(target);
+
+        // Always start from current focus so pan/mid-flight feels continuous
+        const startFocus = focusRef.current;
+        if (
+          points.length === 0 ||
+          abs(sub(points[0]!, startFocus)) > 1e-4
+        ) {
+          points.unshift(startFocus);
+        }
+
+        highlightRef.current = new Set(pathHighlight(waypointIds));
+
+        if (prefersReducedMotion() || modeRef.current !== "hyperbolic") {
+          focusRef.current = target;
+          panRef.current = ZERO;
+          animProgressRef.current = 1;
+          if (modeRef.current === "euclid") {
+            const { scale: sc } = euclidOffsetRef.current;
+            euclidOffsetRef.current = {
+              x: -target.re * sc,
+              y: -target.im * sc,
+              scale: Math.max(sc, 1.12),
+            };
+          }
+          highlightRef.current = new Set(pathToRoot(settleId));
+          onDone?.();
+          return;
+        }
+
+        const hops = Math.max(1, points.length - 1);
+        const duration = flightDurationMs(hops);
         const panFrom = panRef.current;
         const start = performance.now();
         animProgressRef.current = 0;
+
         const step = (now: number) => {
-          const t = Math.min(1, (now - start) / ANIM_MS);
+          const t = Math.min(1, (now - start) / duration);
           const e = easeOutQuint(t);
-          focusRef.current = geodesicLerp(from, target, e);
+          focusRef.current = sampleWaypoints(points, e);
           panRef.current = scale(panFrom, 1 - e);
           animProgressRef.current = e;
           if (t < 1) animRef.current = requestAnimationFrame(step);
           else {
             animRef.current = null;
+            focusRef.current = target;
+            panRef.current = ZERO;
             animProgressRef.current = 1;
+            highlightRef.current = new Set(pathToRoot(settleId));
             onDone?.();
           }
         };
         animRef.current = requestAnimationFrame(step);
       },
-      [cancelAnim],
+      [cancelAnim, pathToRoot],
+    );
+
+    const flyToId = useCallback(
+      (id: number, notify: boolean) => {
+        const node = nodeByIdRef.current.get(id);
+        if (!layoutRef.current.has(id)) return;
+
+        const fromId = focusedIdRef.current;
+        const waypoints = treePath(fromId, id, parentOfRef.current);
+        focusedIdRef.current = id;
+        if (notify && node) selectCbRef.current?.(node);
+
+        animateAlongPath(waypoints, id, () => {
+          // ensure final highlight is ancestry of destination
+          highlightRef.current = new Set(pathToRoot(id));
+        });
+      },
+      [animateAlongPath, pathToRoot],
     );
 
     const selectNode = useCallback(
       (hit: Node) => {
-        selectCbRef.current?.(hit);
-        focusedIdRef.current = hit.id;
-        highlightRef.current = new Set(pathToRoot(hit.id));
-        const target = layoutRef.current.get(hit.id);
-        if (!target) return;
-        if (modeRef.current === "hyperbolic") animateFocusTo(target);
-        else {
-          const { scale: sc } = euclidOffsetRef.current;
-          euclidOffsetRef.current = {
-            x: -target.re * sc,
-            y: -target.im * sc,
-            scale: Math.max(sc, 1.15),
-          };
-        }
+        flyToId(hit.id, true);
       },
-      [animateFocusTo, pathToRoot],
+      [flyToId],
     );
 
     const hitTest = useCallback(
@@ -595,21 +651,7 @@ export const HypertreeCanvas = forwardRef<HypertreeRendererApi, Props>(
           rebuild(nodes);
         },
         flyTo(id) {
-          const node = nodeByIdRef.current.get(id);
-          const target = layoutRef.current.get(id);
-          if (!target) return;
-          focusedIdRef.current = id;
-          highlightRef.current = new Set(pathToRoot(id));
-          if (node) selectCbRef.current?.(node);
-          if (modeRef.current === "hyperbolic") animateFocusTo(target);
-          else {
-            const { scale: sc } = euclidOffsetRef.current;
-            euclidOffsetRef.current = {
-              x: -target.re * sc,
-              y: -target.im * sc,
-              scale: Math.max(sc, 1.1),
-            };
-          }
+          flyToId(id, true);
         },
         highlight(ids) {
           highlightRef.current = new Set(ids);
@@ -642,7 +684,7 @@ export const HypertreeCanvas = forwardRef<HypertreeRendererApi, Props>(
           selectCbRef.current = cb;
         },
       }),
-      [animateFocusTo, cancelAnim, pathToRoot, rebuild],
+      [cancelAnim, flyToId, pathToRoot, rebuild],
     );
 
     useEffect(() => {
