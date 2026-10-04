@@ -674,6 +674,42 @@ button {
   stroke-linecap: round;
 }
 
+/* Auto-grow: shown while Gemini grows an edge topic you reached. */
+.grow-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 9px 18px 9px 14px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  border: 1px solid var(--hairline);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 12px 40px var(--shadow);
+  font-size: 13px;
+  color: var(--text-2);
+  z-index: 3;
+  animation: rise 0.2s ease-out;
+}
+
+.grow-pill strong {
+  color: var(--text);
+}
+
+.grow-pill-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: breathe 0.9s ease-in-out infinite;
+}
+
 /* "How are these connected?": the hint while picking, and the route on the connection card. */
 .connect-hint {
   position: absolute;
@@ -1007,5 +1043,8 @@ button {
   .connect-hint {
     bottom: 76px;
     border-radius: 18px;
+  }
+  .grow-pill {
+    bottom: 76px;
   }
 }

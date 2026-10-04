@@ -100,6 +100,10 @@ const SEARCH_FADE = 0.6; // how much of everything that isn't a match (or on the
 const LENS_PUSH = 0.9; // fisheye strength: points near the cursor spread out by up to 1.9×
 const LENS_GROW = 0.45; // how much more room (and so size and labels) the hovered field's topics get
 const LENS_DIM = 0.6; // how much other fields' topics inside the lens fade
+// Out toward the rim topics are packed tightly, so the lens grows and magnifies more there: up to
+// (1 + 1.4) × LENS_PUSH ≈ 2.2×, still under 3, so it stays monotonic.
+const LENS_RIM_BOOST = 1.4;
+const CLICK_ZOOM = 1.8; // clicking empty space zooms in this much
 const MAX_MAGNIFY = 8;
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -150,6 +154,8 @@ export class Universe {
   private zoomAnimation: ZoomAnimation | null = null;
   private selectHandler: ((node: UNode) => void) | null = null;
   private hoverHandler: ((node: UNode | null) => void) | null = null;
+  private settleHandler: ((node: UNode | null) => void) | null = null;
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
   private lens = false; // the geometry lens: rings of equal hyperbolic distance
   // Field lens: follows the mouse over the disk, spreading nodes apart like a fisheye and bringing out
   // the field (top-level branch) under the cursor.
@@ -403,6 +409,39 @@ export class Universe {
     this.hoverHandler = handler;
   }
 
+  // Called when the camera comes to rest (a flight lands, or a drag or scroll stops) with the topic
+  // nearest the middle of the view, or null if nothing is near it. Used to grow the map at its edges.
+  onSettle(handler: (node: UNode | null) => void) {
+    this.settleHandler = handler;
+  }
+
+  private settleSoon(delay: number) {
+    clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      if (this.flight || this.pointer?.dragging || !this.settleHandler) return;
+      let nearest = -1;
+      let best = (this.radius * 0.22) ** 2;
+      for (let i = 0; i < this.nodes.length; i++) {
+        const d2 = (this.sx[i] - this.ox) ** 2 + (this.sy[i] - this.oy) ** 2;
+        if (d2 < best) {
+          best = d2;
+          nearest = i;
+        }
+      }
+      this.settleHandler(nearest >= 0 ? this.nodes[nearest] : null);
+    }, delay);
+  }
+
+  // Zoom into a spot on the disk, bringing it toward the middle of the view.
+  private zoomInto(x: number, y: number) {
+    const scale = Math.min(MAX_MAGNIFY, this.magnify * CLICK_ZOOM);
+    if (scale <= this.magnify + 1e-3) return;
+    const u = (x - this.ox) / this.radius;
+    const v = (y - this.oy) / this.radius;
+    const radius = this.baseRadius * scale;
+    this.animateView(scale, { x: -u * radius, y: -v * radius }, 460);
+  }
+
   // How far a node is from the centre of the view: in hyperbolic distance, and as the fraction of the
   // way to the rim it is drawn at (tanh(d / 2), which never reaches 1).
   distanceFromCenter(id: number): { hyperbolic: number; drawn: number } | null {
@@ -441,6 +480,7 @@ export class Universe {
 
   destroy() {
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.settleTimer);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -509,7 +549,7 @@ export class Universe {
           const { ids, focusId } = this.routeEnd;
           this.routeEnd = null;
           this.flyToAll(ids, focusId);
-        }
+        } else this.settleSoon(120);
       }
       active = true;
     }
@@ -669,8 +709,15 @@ export class Universe {
     this.applyFieldLens(now);
   }
 
+  // How far toward the rim the cursor is: 0 at the centre of the disk, 1 at the rim.
+  private lensRim() {
+    if (!this.mouse) return 0;
+    return clamp01(Math.hypot(this.mouse.x - this.ox, this.mouse.y - this.oy) / this.radius);
+  }
+
   private lensRadius() {
-    return Math.max(80, Math.min(150, Math.min(this.width, this.height) * 0.14));
+    const base = Math.max(80, Math.min(150, Math.min(this.width, this.height) * 0.14));
+    return base * (1 + 0.25 * this.lensRim() ** 2); // a little wider out where topics are packed
   }
 
   // The field lens, applied on screen after projection: a fisheye around the cursor (points spread out
@@ -697,17 +744,21 @@ export class Universe {
       this.lensSince = now;
     }
     const pop = clamp01((now - this.lensSince) / 420); // a new field's topics populate over ~0.4 s
+    const rim = this.lensRim();
+    const strength = LENS_PUSH * (1 + LENS_RIM_BOOST * rim * rim);
     for (let i = 0; i < this.nodes.length; i++) {
       const dx = this.sx[i] - mx;
       const dy = this.sy[i] - my;
       const d2 = dx * dx + dy * dy;
       if (d2 >= R * R) continue;
       const u = 1 - Math.sqrt(d2) / R; // 1 at the cursor, 0 at the edge
-      const push = 1 + LENS_PUSH * a * u * u; // stays monotonic for LENS_PUSH < 3, so nothing crosses over
+      const push = 1 + strength * a * u * u; // stays monotonic while strength < 3, so nothing crosses over
       this.sx[i] = mx + dx * push;
       this.sy[i] = my + dy * push;
       this.lensWeight[i] = a * u;
-      if (this.branch[i] === this.lensBranch) this.sf[i] = Math.min(1, this.sf[i] + LENS_GROW * a * u * pop);
+      // The field's topics grow most; near the rim everything under the cursor gets room for a name.
+      const grow = this.branch[i] === this.lensBranch ? LENS_GROW : LENS_GROW * 0.6 * rim;
+      this.sf[i] = Math.min(1, this.sf[i] + grow * a * u * pop);
     }
   }
 
@@ -1156,6 +1207,7 @@ export class Universe {
     this.route = [];
     this.routeEnd = null;
     if (this.growth) this.growth.camera = null;
+    this.settleSoon(450);
     if (this.blend < 0.5) {
       const toDisk = (x: number, y: number): C => {
         const re = (x - this.ox) / this.radius;
@@ -1239,6 +1291,8 @@ export class Universe {
     if (!p || p.dragging || p.id !== e.pointerId) return;
     const i = this.nodeAt(p.startX, p.startY);
     if (i >= 0) this.selectHandler?.(this.nodes[i]);
+    // Empty space on the disk: zoom into it.
+    else if (Math.hypot(p.startX - this.ox, p.startY - this.oy) < this.radius) this.zoomInto(p.startX, p.startY);
   };
 
   private onPointerLeave = () => {

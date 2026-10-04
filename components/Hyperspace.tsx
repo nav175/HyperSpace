@@ -24,6 +24,7 @@ type Answer = {
 const QUESTION = /\?\s*$|^(how|what|why|which|who|when|where|can|could|does|do|is|are|should|will|would|explain|tell me)\b/i;
 
 const ZOOM_STEP = 1.5;
+const AUTO_GROW_DWELL = 900; // ms resting on an edge topic before it grows by itself
 const VISIBLE_MATCHES = 6; // suggestions listed under the search bar, and framed on Enter
 const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the card and suggestions beside the disk
 const CARD_ROOM = 404; // the card's width plus its margins
@@ -58,6 +59,16 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const [grown, setGrown] = useState<UNode[]>([]);
   const [growing, setGrowing] = useState<number | null>(null);
   const [growNote, setGrowNote] = useState<{ id: number; text: string } | null>(null);
+  // Auto-grow (A): grow topics at the edges of the map as you reach them.
+  const [autoGrow, setAutoGrow] = useState(true);
+  const [autoGrowing, setAutoGrowing] = useState(false);
+  const attempted = useRef(new Set<number>()); // topics already grown (or tried) this visit
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const growingRef = useRef<number | null>(null);
+  const settleRef = useRef<(node: UNode | null) => void>(() => {});
+  useEffect(() => {
+    growingRef.current = growing;
+  }, [growing]);
   // The geometry lens (G): distance rings on the disk, and a card explaining them.
   const [lens, setLens] = useState(false);
   const [hovered, setHovered] = useState<UNode | null>(null);
@@ -141,6 +152,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     universe.loadTree(nodes);
     universe.onSelect(focusNode);
     universe.onHover(setHovered);
+    universe.onSettle((node) => settleRef.current(node));
     universeRef.current = universe;
     // A shared link (?topic=<id>) opens on that topic.
     const shared = Number(new URLSearchParams(window.location.search).get('topic'));
@@ -445,6 +457,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       if (key === 'f') setMode(mode === 'hyperbolic' ? 'euclid' : 'hyperbolic');
       if (key === 't') toggleTheme();
       if (key === 'g') setLens((on) => !on);
+      if (key === 'a') setAutoGrow((on) => !on);
       if (key === '+' || key === '=') universeRef.current?.zoomBy(ZOOM_STEP);
       if (key === '-' || key === '_') universeRef.current?.zoomBy(1 / ZOOM_STEP);
       if (key === '0') universeRef.current?.resetZoom();
@@ -455,12 +468,15 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
   // Expand: Gemini picks related Wikipedia topics to grow under this one (POST /api/expand). The new
   // branches grow out of the node and light up for a moment, then any search highlight comes back.
-  async function grow(node: UNode) {
+  // `auto`: grown because you reached an edge of the map, so the camera stays where you put it.
+  async function grow(node: UNode, { auto = false }: { auto?: boolean } = {}) {
     if (growing !== null) return;
+    attempted.current.add(node.id);
     setGrowing(node.id);
+    setAutoGrowing(auto);
     setGrowNote(null);
     // Bring the topic to the centre first, so its new branches grow where you're looking.
-    universeRef.current?.flyTo(node.id);
+    if (!auto) universeRef.current?.flyTo(node.id);
     try {
       const res = await fetch('/api/expand', {
         method: 'POST',
@@ -476,7 +492,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         universeRef.current?.addChildren(node.id, fresh);
         universeRef.current?.highlight(fresh.map((child) => child.id));
         // Follow the growth: frame the topic with its new branches, so they get room and labels.
-        universeRef.current?.flyToAll([node.id, ...fresh.map((child) => child.id)], node.id);
+        if (!auto) universeRef.current?.flyToAll([node.id, ...fresh.map((child) => child.id)], node.id);
         clearTimeout(growTimer.current);
         growTimer.current = setTimeout(() => universeRef.current?.highlight(searchLit.current), 4500);
       }
@@ -488,11 +504,28 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
           : 'Nothing new to grow here yet',
       });
     } catch {
-      setGrowNote({ id: node.id, text: "Couldn't grow this branch just now. Try again." });
+      // An automatic grow fails quietly; you can still press the button.
+      if (!auto) setGrowNote({ id: node.id, text: "Couldn't grow this branch just now. Try again." });
     } finally {
       setGrowing(null);
+      setAutoGrowing(false);
     }
   }
+
+  // Auto-grow: when the camera comes to rest on a topic with no branches yet (an edge of the map) and
+  // stays there for a moment, grow it, once per topic.
+  function onSettle(node: UNode | null) {
+    clearTimeout(settleTimer.current);
+    if (!autoGrow || !node || childCount.has(node.id) || attempted.current.has(node.id) || growing !== null) return;
+    settleTimer.current = setTimeout(() => {
+      if (growingRef.current === null) grow(node, { auto: true });
+    }, AUTO_GROW_DWELL);
+  }
+
+  useEffect(() => {
+    settleRef.current = onSettle;
+  });
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
 
   // Ask Hyperspace: TiDB finds the topics for the question, Gemini answers from them and cites them.
   // The cited topics light up and the camera frames them.
@@ -711,6 +744,17 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
       <div className="toolbar">
         <button
+          className={autoGrow ? 'theme-toggle lens-toggle on' : 'theme-toggle lens-toggle'}
+          onClick={() => setAutoGrow((on) => !on)}
+          aria-pressed={autoGrow}
+          aria-label="Auto-grow at the edges"
+          title={autoGrow ? 'Auto-grow is on (A): the map grows as you reach its edges' : 'Auto-grow is off (A)'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 21v-8M12 13c0-4 2.5-6.5 7-7 0 4.5-2.5 7-7 7ZM12 15c0-3-2-5-6-5.5 0 3.5 2 5.5 6 5.5Z" />
+          </svg>
+        </button>
+        <button
           className={lens ? 'theme-toggle lens-toggle on' : 'theme-toggle lens-toggle'}
           onClick={() => setLens((on) => !on)}
           aria-pressed={lens}
@@ -775,6 +819,13 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
             </p>
           )}
         </aside>
+      )}
+
+      {autoGrowing && growing !== null && (
+        <div className="grow-pill" role="status">
+          <span className="grow-pill-dot" aria-hidden="true" />
+          Gemini is growing new territory around <strong>{byId.get(growing)?.title}</strong>
+        </div>
       )}
 
       {connectFrom && (
@@ -931,7 +982,9 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       )}
 
       <footer className="dock">
-        <p className={explored ? 'hint hidden' : 'hint'}>Click a topic to bring it to the centre · Scroll or drag to explore · Pinch to zoom</p>
+        <p className={explored ? 'hint hidden' : 'hint'}>
+          Click a topic to bring it to the centre · Click empty space to zoom in · Drag to explore · The map grows as you reach its edges
+        </p>
       </footer>
 
       <div className="controls" role="group" aria-label="View">
