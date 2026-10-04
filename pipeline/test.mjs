@@ -193,6 +193,16 @@ describe('API functions (lib/api.mjs)', () => {
     assert.deepEqual(await searchNodes('   '), { matches: [], focusNodeId: null });
   });
 
+  test('searchNodes puts an exact title first, and meaning ahead of filler words', async () => {
+    for (const title of ['Computer vision', 'Robotics', 'Machine learning']) {
+      const { matches } = await searchNodes(title.toLowerCase());
+      assert.equal(matches[0].title, title, matches.map((match) => match.title).join(', '));
+    }
+    // Full-text alone matches "look" and "people" all over; the meaning is humanoid robots.
+    const { matches } = await searchNodes('robots that look like people');
+    assert.match(matches[0].title, /^Humanoid robots?$/, matches.map((match) => match.title).join(', '));
+  });
+
   test('getNode returns null for unknown or malformed ids', async () => {
     assert.equal(await getNode('999999999999'), null);
     assert.equal(await getNode('abc'), null);
