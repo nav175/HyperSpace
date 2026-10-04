@@ -1,6 +1,6 @@
 // Step 2: crawl Wikipedia's category tree into nodes.json (the README contract shape).
-//   npm run ingest                                # ~2,500 nodes under "Artificial intelligence"
-//   npm run ingest -- --max-nodes 1250            # Gate B fallback: half the universe
+//   npm run ingest                                # ~5,600 nodes under "Artificial intelligence"
+//   npm run ingest -- --max-nodes 2500            # a smaller universe
 //   npm run ingest -- --extra "Robotics,Ethics"   # choose which branches get grafted onto the root
 // Wikipedia responses are cached in .cache/, so re-running after tuning the filters takes seconds.
 import { createHash } from 'node:crypto';
@@ -14,13 +14,18 @@ const { values: opts } = parseArgs({
   options: {
     root: { type: 'string', default: 'Artificial intelligence' },
     // Wikipedia files these outside Category:Artificial intelligence, but the demo needs them.
-    extra: { type: 'string', default: 'Machine learning,Computer vision,Natural language processing,Robotics' },
-    depth: { type: 'string', default: '4' },
-    'max-nodes': { type: 'string', default: '2500' },
-    'max-categories': { type: 'string', default: '400' },
-    branches: { type: 'string', default: '14' },
-    subcats: { type: 'string', default: '10' },
-    articles: { type: 'string', default: '12' },
+    extra: {
+      type: 'string',
+      default: 'Machine learning,Computer vision,Natural language processing,Robotics,Data mining,Speech recognition',
+    },
+    depth: { type: 'string', default: '6' },
+    'max-nodes': { type: 'string', default: '12000' },
+    'max-categories': { type: 'string', default: '3000' },
+    branches: { type: 'string', default: '24' },
+    subcats: { type: 'string', default: '24' },
+    articles: { type: 'string', default: '100' },
+    // The root's own articles each take a slice of the opening view, so it keeps fewer.
+    'root-articles': { type: 'string', default: '24' },
     out: { type: 'string' },
     fresh: { type: 'boolean', default: false },
   },
@@ -31,6 +36,7 @@ const MAX_CATEGORIES = Number(opts['max-categories']);
 const BRANCHES = Number(opts.branches); // the root's own subcategories kept, on top of --extra
 const SUBCATS_PER_CATEGORY = Number(opts.subcats);
 const ARTICLES_PER_CATEGORY = Number(opts.articles);
+const ROOT_ARTICLES = Number(opts['root-articles']);
 const OUT = opts.out ? resolve(opts.out) : fileURLToPath(new URL('data/nodes.json', import.meta.url));
 
 const WIKI_API = 'https://en.wikipedia.org/w/api.php';
@@ -60,6 +66,12 @@ const BIOGRAPHY =
   /^(?:[^.]|(?<=\b[A-Z])\.){0,200}\(born\b|^(?:[^.]|(?<=\b[A-Z])\.){0,120}\([^()]*\b\d{4}\b[^()]*[–-][^()]*\b\d{4}\)\s+(is|was)\b|^(?:[^.]|(?<=\b[A-Z])\.){2,80}? (is|was) an? (?:[\w-]+ ){0,4}(artist|scientist|engineer|professor|researcher|entrepreneur|businessman|businesswoman|executive|politician|singer|musician|filmmaker|writer|author|activist|designer|inventor|roboticist|philosopher|programmer|developer|biohacker|academic(?= (?:in|at|and|who)\b|,))\b/;
 const EVENT_LEAD =
   /^(On|In|From|Between|During|Since)\s+((the )?\d{1,2}(st|nd|rd|th)? )?(January|February|March|April|May|June|July|August|September|October|November|December)\b/;
+// A few levels down, the category graph wanders into medicine, codecs, file formats and product
+// catalogues. data/excluded.json lists those branches and pages by id, reviewed by hand; the crawl
+// skips them, so their slots go to on-topic siblings and a re-crawl makes the same choices.
+const EXCLUDED = new Set(
+  JSON.parse(readFileSync(new URL('data/excluded.json', import.meta.url), 'utf8')).flatMap((group) => group.ids.map(([id]) => id)),
+);
 const DEMO_TOPICS = [
   'Computer vision',
   'Transformer',
@@ -74,7 +86,7 @@ const DEMO_TOPICS = [
 const nodes = new Map(); // page id → node
 const visited = new Set(); // page ids already placed; BFS means the shallowest placement wins
 const categoryByTitle = new Map(); // lowercase title → category node, to fold in same-named articles
-const dropped = { person: 0, organisation: 0, media: 0, event: 0, meta: 0 };
+const dropped = { person: 0, organisation: 0, media: 0, event: 0, meta: 0, excluded: 0 };
 let fetched = 0;
 let cached = 0;
 
@@ -142,8 +154,9 @@ for (const node of nodes.values()) {
   if (!articlesUnder.has(node.parentId)) articlesUnder.set(node.parentId, []);
   articlesUnder.get(node.parentId).push(node);
 }
-for (const articles of articlesUnder.values()) {
-  for (const extra of articles.sort(byImportance).slice(ARTICLES_PER_CATEGORY)) remove(extra);
+for (const [parentId, articles] of articlesUnder) {
+  const cap = parentId === root.id ? ROOT_ARTICLES : ARTICLES_PER_CATEGORY;
+  for (const extra of articles.sort(byImportance).slice(cap)) remove(extra);
 }
 
 if (nodes.size > MAX_NODES) {
@@ -236,7 +249,10 @@ async function expand(category) {
   // Subcategories first, so an article named like one becomes its summary instead of a duplicate node.
   if (category.depth + 1 < MAX_DEPTH) {
     const keep = members
-      .filter((page) => page.ns === 14 && !visited.has(page.pageid) && !BAD_CATEGORY.test(page.title))
+      .filter(
+        (page) =>
+          page.ns === 14 && !visited.has(page.pageid) && !EXCLUDED.has(page.pageid) && !BAD_CATEGORY.test(page.title),
+      )
       .sort((a, b) => categorySize(b) - categorySize(a))
       .slice(0, category === root ? BRANCHES : SUBCATS_PER_CATEGORY);
     for (const page of keep) subcategories.push(addNode(page, category, 'category'));
@@ -244,6 +260,10 @@ async function expand(category) {
   for (const page of members) {
     if (page.ns !== 0 || visited.has(page.pageid)) continue;
     visited.add(page.pageid);
+    if (EXCLUDED.has(page.pageid)) {
+      dropped.excluded++;
+      continue;
+    }
     const owner = categoryByTitle.get(page.title.toLowerCase());
     if (owner) {
       owner.main ??= summarySource(page);
