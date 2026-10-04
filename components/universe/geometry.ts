@@ -26,6 +26,27 @@ export function alongGeodesic(q: C, s: number): C {
   return { re: q.re * k, im: q.im * k };
 }
 
+// Roughly the centre of the smallest hyperbolic circle around `points`: the spot whose farthest point
+// is as near as possible, so a view centred there keeps every point in sight. Bădoiu–Clarkson: start
+// at a point and keep stepping a shrinking share of the way toward whichever point is farthest.
+export function enclosingCenter(points: C[], iterations = 64): C {
+  let c = points[0];
+  for (let k = 1; k <= iterations; k++) {
+    let farthest = c;
+    let best = -1;
+    for (const p of points) {
+      const q = toOrigin(p, c); // seen from c, nearer the rim means farther away
+      const d = q.re * q.re + q.im * q.im;
+      if (d > best) {
+        best = d;
+        farthest = q;
+      }
+    }
+    c = fromOrigin(alongGeodesic(farthest, 1 / (k + 1)), c);
+  }
+  return c;
+}
+
 type TreeInput = { id: number; parentId: number | null };
 
 const SPACING = 0.36; // hyperbolic arc length between neighbouring siblings

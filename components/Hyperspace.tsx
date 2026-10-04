@@ -5,11 +5,15 @@ import { pathOf, searchUniverse, type SearchResult } from './search';
 import { Universe, type Mode, type ThemeName, type UNode } from './universe/Universe';
 
 const ZOOM_STEP = 1.5;
+const VISIBLE_MATCHES = 6; // suggestions listed under the search bar, and framed on Enter
+const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the card and suggestions beside the disk
+const CARD_ROOM = 404; // the card's width plus its margins
 
 export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const universeRef = useRef<Universe | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<UNode[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState<UNode | null>(null);
@@ -19,6 +23,9 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const [searching, setSearching] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  // True once you move through the suggestions (arrows or pointer): Enter then means that row,
+  // not "show me all the matches".
+  const [stepped, setStepped] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [introducing, setIntroducing] = useState(true);
@@ -91,15 +98,28 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     });
   }, []);
 
-  // Make room for the card on wide screens; on phones (the CSS breakpoint) it slides up from the
-  // bottom instead. Re-check on resize, since rotating or resizing can cross the breakpoint.
+  // Keep the disk clear of the panels, so they never cover the matches they describe. On wide screens
+  // the card sits on the right and the suggestions on the left; on phones (the CSS breakpoint) the card
+  // slides up over the bottom and the suggestions drop below the search bar, so the disk moves down.
+  // Re-check on resize, since rotating or resizing can cross the breakpoint.
+  const suggestionsShown = resultsOpen && result !== null;
+  // While you look through new suggestions the card for the last topic steps aside, so the disk keeps
+  // its size; it returns when the list closes (Enter swaps in the best match).
+  const cardShown = selected !== null && !suggestionsShown;
   useEffect(() => {
-    const wide = window.matchMedia('(min-width: 761px)');
-    const update = () => universeRef.current?.setRightInset(selected && wide.matches ? 404 : 0);
+    const wide = window.matchMedia(WIDE);
+    const update = () => {
+      const list = suggestionsShown ? resultsRef.current?.getBoundingClientRect() : undefined;
+      universeRef.current?.setInsets({
+        left: list && wide.matches ? list.right + 24 : 0,
+        right: cardShown && wide.matches ? CARD_ROOM : 0,
+        top: list && !wide.matches ? list.bottom + 8 : 0,
+      });
+    };
     update();
     wide.addEventListener('change', update);
     return () => wide.removeEventListener('change', update);
-  }, [selected]);
+  }, [cardShown, suggestionsShown, result]);
 
   const goHome = useCallback(() => {
     if (!root) return;
@@ -140,6 +160,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       setSearching(false);
       setResult({ ...found, query: text });
       setActiveIndex(0);
+      setStepped(false);
       if (document.activeElement === inputRef.current) setResultsOpen(true);
       universeRef.current?.highlight(found.matches.map((match) => match.id));
     }, 220);
@@ -157,15 +178,31 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     inputRef.current?.blur();
   }
 
-  // Enter flies to the highlighted suggestion. If the suggestions are still catching up with the
-  // text, search right away instead of waiting for the pause.
+  // Enter shows every suggestion on the map at once: the view moves to where they all fit, the best
+  // match gets the focus ring, and the rest stay lit and labelled in case you meant one of them.
+  // On wide screens the best match's card opens beside the disk; on phones it would slide up over
+  // half the matches, so it waits for a tap.
+  function showMatches(found: SearchResult) {
+    const ids = found.matches.slice(0, VISIBLE_MATCHES).map((match) => match.id);
+    const best = found.focusNodeId ?? ids[0];
+    if (best === undefined) return;
+    universeRef.current?.flyToAll(ids, best);
+    setSelected(window.matchMedia(WIDE).matches ? (byId.get(best) ?? null) : null);
+    setExplored(true);
+    setResultsOpen(false);
+    inputRef.current?.blur();
+  }
+
+  // Enter shows all the matches, or flies to the suggestion you stepped to. If the suggestions are
+  // still catching up with the text, search right away instead of waiting for the pause.
   async function submitSearch(e: FormEvent) {
     e.preventDefault();
     const text = query.trim();
     if (!text || !nodes) return;
     if (result?.query === text) {
-      const match = result.matches[activeIndex] ?? result.matches[0];
-      if (match) chooseMatch(match.id);
+      const match = result.matches[activeIndex];
+      if (stepped && match) chooseMatch(match.id);
+      else showMatches(result);
       return;
     }
     setSearching(true);
@@ -173,18 +210,21 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     setSearching(false);
     if (!found) return;
     setResult({ ...found, query: text });
+    setActiveIndex(0);
+    setStepped(false);
     universeRef.current?.highlight(found.matches.map((match) => match.id));
-    if (found.focusNodeId !== null) chooseMatch(found.focusNodeId);
+    showMatches(found);
   }
 
-  const visibleMatches = result?.matches.slice(0, 6) ?? [];
+  const visibleMatches = result?.matches.slice(0, VISIBLE_MATCHES) ?? [];
 
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!resultsOpen || !visibleMatches.length) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const step = e.key === 'ArrowDown' ? 1 : -1;
-      setActiveIndex((index) => (index + step + visibleMatches.length) % visibleMatches.length);
+      setActiveIndex((index) => (stepped ? (index + step + visibleMatches.length) % visibleMatches.length : step > 0 ? 0 : visibleMatches.length - 1));
+      setStepped(true);
     }
   }
 
@@ -234,7 +274,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       .join(' › ');
 
   return (
-    <main className={presenting ? 'stage presenting' : 'stage'}>
+    <main className={['stage', presenting && 'presenting', suggestionsShown && 'suggesting'].filter(Boolean).join(' ')}>
       <canvas
         ref={canvasRef}
         className="universe"
@@ -273,7 +313,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
               if (result) setResultsOpen(true);
             }}
             onBlur={() => setSearchFocused(false)}
-            placeholder={searchExpanded ? 'Search by meaning: “AI that understands images”' : 'Search'}
+            placeholder={searchExpanded ? 'Try “AI that understands images”' : 'Search'}
             aria-label="Search the universe"
             aria-expanded={resultsOpen}
             aria-controls="search-results"
@@ -288,32 +328,36 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
             <kbd>/</kbd>
           )}
         </form>
-
-        {resultsOpen && result && (
-          <div className="results" role="listbox" id="search-results">
-            {visibleMatches.length ? (
-              visibleMatches.map((match, index) => (
-                <button
-                  key={match.id}
-                  role="option"
-                  aria-selected={index === activeIndex}
-                  className={index === activeIndex ? 'result active' : 'result'}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  // Keep focus in the field until the click lands, so the bar doesn't collapse under the cursor.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => chooseMatch(match.id)}
-                >
-                  <span className="result-title">{match.title}</span>
-                  <span className="result-path">{breadcrumb(match.id) || 'Artificial intelligence'}</span>
-                </button>
-              ))
-            ) : (
-              <p className="results-empty">Nothing matches that yet.</p>
-            )}
-            {result.offline && <p className="results-note">Offline · keyword matches</p>}
-          </div>
-        )}
       </div>
+
+      {suggestionsShown && (
+        <div className="results" role="listbox" id="search-results" ref={resultsRef} aria-label={`Matches for ${result.query}`}>
+          {visibleMatches.length > 0 && <p className="results-head">Matches for “{result.query}”</p>}
+          {visibleMatches.length ? (
+            visibleMatches.map((match, index) => (
+              <button
+                key={match.id}
+                role="option"
+                aria-selected={stepped && index === activeIndex}
+                className={stepped && index === activeIndex ? 'result active' : 'result'}
+                onMouseEnter={() => {
+                  setActiveIndex(index);
+                  setStepped(true);
+                }}
+                // Keep focus in the field until the click lands, so the bar doesn't collapse under the cursor.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => chooseMatch(match.id)}
+              >
+                <span className="result-title">{match.title}</span>
+                <span className="result-path">{breadcrumb(match.id) || 'Artificial intelligence'}</span>
+              </button>
+            ))
+          ) : (
+            <p className="results-empty">Nothing matches that yet.</p>
+          )}
+          {result.offline && <p className="results-note">Offline · keyword matches</p>}
+        </div>
+      )}
 
       <div className="toolbar">
         <button
@@ -343,7 +387,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         </div>
       </div>
 
-      {selected && (
+      {cardShown && (
         <aside className="card" key={selected.id}>
           <button className="card-close" onClick={() => setSelected(null)} aria-label="Close">
             ×

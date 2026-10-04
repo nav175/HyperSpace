@@ -1,6 +1,6 @@
 // Canvas renderer for the Poincaré-disk universe. Implements the README renderer contract:
 // loadTree, flyTo, highlight, addChildren, setMode, onSelect. It only draws when something changes.
-import { alongGeodesic, fromOrigin, layoutTree, toOrigin, type C } from './geometry';
+import { alongGeodesic, enclosingCenter, fromOrigin, layoutTree, toOrigin, type C } from './geometry';
 
 export type UNode = {
   id: number;
@@ -20,6 +20,7 @@ type Flight = { start: number; duration: number; from: C; target: C; flatFrom: P
 type Morph = { start: number; duration: number; from: number; to: number };
 type ZoomAnimation = { start: number; duration: number; fromScale: number; toScale: number; fromOffset: Pt; toOffset: Pt };
 type Label = { i: number; x: number; y: number; w: number; h: number };
+export type Insets = { top: number; right: number; left: number };
 type Theme = {
   palette: RGB[]; // branch colours, run around the disk from purple through blue to green
   root: RGB;
@@ -90,6 +91,7 @@ const ALPHA_STEPS = 16;
 const FLAT_ZOOM = 2.4;
 const MAX_LABELS = 56;
 const MIN_MAGNIFY = 0.7;
+const SEARCH_FADE = 0.6; // how much of everything that isn't a match (or on the way to one) fades during a search
 const MAX_MAGNIFY = 8;
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -127,6 +129,7 @@ export class Universe {
   private hover = -1;
   private highlighted = new Set<number>();
   private highlightPath = new Set<number>();
+  private dim = 0; // 0 → 1 as a search's non-matches fade back, eased in step()
   private flight: Flight | null = null;
   private morph: Morph | null = null;
   private zoomAnimation: ZoomAnimation | null = null;
@@ -145,8 +148,8 @@ export class Universe {
   private radius = 0;
   private ox = 0;
   private oy = 0;
-  private inset = 0; // room kept free on the right, e.g. for the node card
-  private targetInset = 0;
+  private inset: Insets = { top: 0, right: 0, left: 0 }; // room kept free for panels, e.g. the node card
+  private targetInset: Insets = { top: 0, right: 0, left: 0 };
   private raf = 0;
   private pointer: { id: number; x: number; y: number; startX: number; startY: number; dragging: boolean } | null = null;
   private touches = new Map<number, Pt>();
@@ -239,25 +242,28 @@ export class Universe {
     const i = this.index.get(id);
     if (i === undefined) return;
     this.focus = i;
-    const target = toOrigin({ re: this.hx[i], im: this.hy[i] }, this.center);
-    const distance = 2 * Math.atanh(Math.min(Math.hypot(target.re, target.im), 1 - 1e-12));
-    const duration = 650 + 150 * Math.min(distance, 4);
-    this.flight = {
-      start: performance.now(),
-      duration,
-      from: this.center,
-      target,
-      flatFrom: { ...this.flatCenter },
-      flatTo: { x: this.fx[i], y: this.fy[i] },
-      zoomFrom: this.zoom,
-      zoomTo: this.nodes[i].depth === 0 ? 1 : FLAT_ZOOM,
-    };
-    // When zoomed into a spot off to one side, drift back so the destination lands on screen,
-    // keeping any zoom change already under way (e.g. the reset that "back to the centre" starts).
-    if (this.offset.x || this.offset.y) {
-      this.animateView(this.zoomAnimation?.toScale ?? this.magnify, { x: 0, y: 0 }, duration);
+    this.flyToPoint({ re: this.hx[i], im: this.hy[i] }, { x: this.fx[i], y: this.fy[i] }, this.nodes[i].depth === 0 ? 1 : FLAT_ZOOM);
+  }
+
+  // Fly to where all of `ids` are in view together (e.g. every search match) instead of putting one
+  // at the centre, which would push the rest out to the rim. `focusId` keeps the focus ring on one.
+  flyToAll(ids: number[], focusId?: number) {
+    const members = ids.map((id) => this.index.get(id)).filter((i): i is number => i !== undefined);
+    if (!members.length) return;
+    const focus = focusId === undefined ? undefined : this.index.get(focusId);
+    this.focus = focus ?? members[0];
+    if (members.length === 1) {
+      this.flyTo(this.nodes[members[0]].id);
+      return;
     }
-    this.invalidate();
+    const center = enclosingCenter(members.map((i) => ({ re: this.hx[i], im: this.hy[i] })));
+    // Flat view: centre their bounding box and zoom until it fills most of the disk.
+    const xs = members.map((i) => this.fx[i]);
+    const ys = members.map((i) => this.fy[i]);
+    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const extent = Math.max(maxX - minX, maxY - minY) / 2;
+    const zoom = Math.min(FLAT_ZOOM, Math.max(1, 0.8 / Math.max(extent, 1e-3)));
+    this.flyToPoint(center, { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, zoom);
   }
 
   highlight(ids: number[]) {
@@ -301,9 +307,10 @@ export class Universe {
     this.invalidate();
   }
 
-  // Keep `px` free on the right (the node card); the disk glides over to make room.
-  setRightInset(px: number) {
-    this.targetInset = px;
+  // Keep room free at the edges for panels (the node card, the search suggestions); the disk glides
+  // over to make room, shrinking only if the space left is narrower than the screen is tall.
+  setInsets(insets: Partial<Insets>) {
+    this.targetInset = { top: 0, right: 0, left: 0, ...insets };
     this.invalidate();
   }
 
@@ -322,6 +329,29 @@ export class Universe {
   }
 
   // ── Frame loop ───────────────────────────────────────────────────────────────────────
+
+  // Glide the centre of the disk to `point` (and the flat view to `flatTo` at `zoomTo`).
+  private flyToPoint(point: C, flatTo: Pt, zoomTo: number) {
+    const target = toOrigin(point, this.center);
+    const distance = 2 * Math.atanh(Math.min(Math.hypot(target.re, target.im), 1 - 1e-12));
+    const duration = 650 + 150 * Math.min(distance, 4);
+    this.flight = {
+      start: performance.now(),
+      duration,
+      from: this.center,
+      target,
+      flatFrom: { ...this.flatCenter },
+      flatTo,
+      zoomFrom: this.zoom,
+      zoomTo,
+    };
+    // When zoomed into a spot off to one side, drift back so the destination lands on screen,
+    // keeping any zoom change already under way (e.g. the reset that "back to the centre" starts).
+    if (this.offset.x || this.offset.y) {
+      this.animateView(this.zoomAnimation?.toScale ?? this.magnify, { x: 0, y: 0 }, duration);
+    }
+    this.invalidate();
+  }
 
   private invalidate() {
     if (!this.raf) this.raf = requestAnimationFrame(this.frame);
@@ -364,9 +394,20 @@ export class Universe {
       if (t >= 1) this.zoomAnimation = null;
       active = true;
     }
-    if (this.inset !== this.targetInset) {
-      const gap = this.targetInset - this.inset;
-      this.inset = Math.abs(gap) < 0.5 ? this.targetInset : this.inset + gap * 0.16;
+    const dimTarget = this.highlighted.size ? 1 : 0;
+    if (this.dim !== dimTarget) {
+      const gap = dimTarget - this.dim;
+      this.dim = Math.abs(gap) < 0.01 ? dimTarget : this.dim + gap * 0.18;
+      active = true;
+    }
+    let moved = false;
+    for (const side of ['top', 'right', 'left'] as const) {
+      const gap = this.targetInset[side] - this.inset[side];
+      if (!gap) continue;
+      this.inset[side] = Math.abs(gap) < 0.5 ? this.targetInset[side] : this.inset[side] + gap * 0.16;
+      moved = true;
+    }
+    if (moved) {
       this.layoutViewport();
       active = true;
     }
@@ -387,10 +428,12 @@ export class Universe {
   }
 
   private layoutViewport() {
-    const usable = this.width - this.inset;
-    this.baseRadius = Math.min(usable, this.height) * 0.46;
-    this.baseOx = usable / 2;
-    this.baseOy = this.height / 2 + Math.min(24, this.height * 0.02);
+    const { top, right, left } = this.inset;
+    const usableWidth = this.width - left - right;
+    const usableHeight = this.height - top;
+    this.baseRadius = Math.min(usableWidth, usableHeight) * 0.46;
+    this.baseOx = left + usableWidth / 2;
+    this.baseOy = top + usableHeight / 2 + Math.min(24, usableHeight * 0.02);
     this.applyView();
   }
 
@@ -509,7 +552,7 @@ export class Universe {
       if (p < 0) continue;
       const f = this.sf[i];
       if (f < 0.002 || (!onScreen(i) && !onScreen(p))) continue;
-      const alpha = Math.min(0.75, (0.08 + 0.6 * Math.pow(f, 0.85)) * theme.inkBoost);
+      const alpha = Math.min(0.75, (0.08 + 0.6 * Math.pow(f, 0.85)) * theme.inkBoost) * this.fadeFor(i);
       const key = this.styleKey(this.branch[i], alpha);
       (edgeGroups.get(key) ?? edgeGroups.set(key, []).get(key)!).push(i);
     }
@@ -534,7 +577,7 @@ export class Universe {
     const nodeGroups = new Map<number, number[]>();
     for (let i = 0; i < this.nodes.length; i++) {
       if (!onScreen(i)) continue;
-      const alpha = Math.min(1, (0.32 + 0.9 * Math.pow(this.sf[i], 0.6)) * theme.inkBoost);
+      const alpha = Math.min(1, (0.32 + 0.9 * Math.pow(this.sf[i], 0.6)) * theme.inkBoost) * this.fadeFor(i);
       const key = this.styleKey(this.branch[i], alpha);
       (nodeGroups.get(key) ?? nodeGroups.set(key, []).get(key)!).push(i);
     }
@@ -627,20 +670,26 @@ export class Universe {
       const size = focused ? 17 : category ? 10 + 3 * f : 10.5 + 3.5 * f;
       const text = category && !focused ? node.title.toUpperCase() : node.title;
       const weight = focused || category ? 600 : 400;
-      const spacing = category && !focused ? '0.08em' : '0px';
-      const width = (this.textWidth(text, weight, spacing) * size) / 100;
+      // Letter spacing in px: canvas resolves `em` spacing inconsistently between sizes, which made
+      // measured widths come up short and long labels run off the edge.
+      const spacing = category && !focused ? 0.08 * size : 0;
+      const width = (this.textWidth(text, weight) * size) / 100 + spacing * text.length;
       ctx.font = `${weight} ${size.toFixed(1)}px ${this.font}`;
-      ctx.letterSpacing = spacing;
+      ctx.letterSpacing = `${spacing.toFixed(2)}px`;
       const r = this.nodeRadius(i);
       const h = size + 4;
-      const x = focused ? this.sx[i] - width / 2 : this.sx[i] + r + 6;
+      // Labels sit to the right of their node, unless that would run them off the right edge or under
+      // a panel kept clear there (the card).
+      const right = this.sx[i] + r + 6;
+      const edge = this.width - this.inset.right - 16;
+      const x = focused ? this.sx[i] - width / 2 : right + width > edge ? this.sx[i] - r - 6 - width : right;
       const y = focused ? this.sy[i] + r + 30 : this.sy[i];
       const box = { i, x: x - 3, y: y - h / 2, w: width + 6, h };
       if (box.x + box.w < 0 || box.x > this.width || box.y + box.h < 0 || box.y > this.height) continue;
       if (this.labels.some((other) => overlaps(box, other))) continue;
       this.labels.push(box);
 
-      const fade = focused || this.highlighted.has(i) || i === this.hover ? 1 : clamp01((f - 0.14) / 0.3);
+      const fade = (focused || this.highlighted.has(i) || i === this.hover ? 1 : clamp01((f - 0.14) / 0.3)) * this.fadeFor(i);
       ctx.strokeStyle = `rgba(${theme.halo}, ${0.85 * fade})`;
       ctx.lineWidth = 3;
       ctx.strokeText(text, x, y);
@@ -689,6 +738,13 @@ export class Universe {
     ctx.lineTo(x2, y2);
   }
 
+  // During a search, everything except the matches, the branches leading to them, and the node in
+  // focus (or under the pointer) fades back, so the matches stand out. An edge belongs to its child.
+  private fadeFor(i: number) {
+    if (!this.dim || this.highlightPath.has(i) || i === this.focus || i === this.hover) return 1;
+    return 1 - SEARCH_FADE * this.dim;
+  }
+
   private nodeRadius(i: number) {
     const base = this.parent[i] < 0 ? 6.5 : this.isCategory[i] ? 4.6 : 2.6;
     return Math.max(0.6, base * (0.12 + 0.88 * this.sf[i]));
@@ -710,14 +766,14 @@ export class Universe {
     return style;
   }
 
-  // Text width scales with font size (letter spacing is in em), so each label is measured once at
-  // 100px and scaled, which keeps the cache to one entry per title and style.
-  private textWidth(text: string, weight: number, spacing: string) {
-    const key = `${weight}|${spacing}|${text}`;
+  // Text width scales with font size, so each label is measured once at 100px (without letter
+  // spacing, which the caller adds) and scaled, keeping the cache to one entry per title and weight.
+  private textWidth(text: string, weight: number) {
+    const key = `${weight}|${text}`;
     let width = this.textWidths.get(key);
     if (width === undefined) {
       this.ctx.font = `${weight} 100px ${this.font}`;
-      this.ctx.letterSpacing = spacing;
+      this.ctx.letterSpacing = '0px';
       width = this.ctx.measureText(text).width;
       this.textWidths.set(key, width);
     }
