@@ -1,8 +1,4 @@
 // GET /api/node/:id → Node + path: [ids] (README contract).
-// For Karn's Next.js app: copy pipeline/next-routes/api into the app's `app/api` folder.
-// - With a `src/app` layout, add one more `../` to the import below.
-// - Add mysql2 to the root package.json so Vercel installs it.
-// - If the build trips over mysql2, add `serverExternalPackages: ['mysql2']` to next.config.
 import { NextResponse } from 'next/server';
 import { getNode } from '../../../../pipeline/lib/api.mjs';
 

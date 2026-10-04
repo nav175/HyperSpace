@@ -147,6 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+.vercel
+next-env.d.ts
+*.tsbuildinfo
 
 # Local-only agent context (do not publish)
 AGENT_HANDOFF.md
