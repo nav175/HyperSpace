@@ -8,12 +8,14 @@ const ZOOM_STEP = 1.5;
 const VISIBLE_MATCHES = 6; // suggestions listed under the search bar, and framed on Enter
 const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the card and suggestions beside the disk
 const CARD_ROOM = 404; // the card's width plus its margins
+const PHONE_TITLE_BOTTOM = 136; // where the title ends on phones (search bar, then title)
 
 export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const universeRef = useRef<Universe | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const lensRef = useRef<HTMLElement>(null);
   const [nodes, setNodes] = useState<UNode[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState<UNode | null>(null);
@@ -37,6 +39,9 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const [grown, setGrown] = useState<UNode[]>([]);
   const [growing, setGrowing] = useState<number | null>(null);
   const [growNote, setGrowNote] = useState<{ id: number; text: string } | null>(null);
+  // The geometry lens (G): distance rings on the disk, and a card explaining them.
+  const [lens, setLens] = useState(false);
+  const [hovered, setHovered] = useState<UNode | null>(null);
   // The search matches currently lit, so a new branch's highlight can hand back to them afterwards.
   const searchLit = useRef<number[]>([]);
   const growTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -88,6 +93,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     const universe = new Universe(canvasRef.current, { fontFamily, theme: themeRef.current });
     universe.loadTree(nodes);
     universe.onSelect(focusNode);
+    universe.onHover(setHovered);
     universeRef.current = universe;
     return () => {
       universe.destroy();
@@ -99,6 +105,10 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   useEffect(() => {
     if (document.documentElement.dataset.theme === 'light') setTheme('light');
   }, []);
+
+  useEffect(() => {
+    universeRef.current?.setLens(lens);
+  }, [lens, nodes]);
 
   useEffect(() => {
     themeRef.current = theme;
@@ -130,16 +140,22 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     const wide = window.matchMedia(WIDE);
     const update = () => {
       const list = suggestionsShown ? resultsRef.current?.getBoundingClientRect() : undefined;
+      // The lens card sits in the same left column, below where the suggestions would be.
+      const lensCard = lens && !suggestionsShown ? lensRef.current?.getBoundingClientRect() : undefined;
+      const leftPanel = Math.max(list?.right ?? 0, lensCard?.right ?? 0);
+      // Phones: the lens card sits at the bottom, so the disk fits between the title and the card.
+      const phoneLens = lensCard && !wide.matches;
       universeRef.current?.setInsets({
-        left: list && wide.matches ? list.right + 24 : 0,
+        left: leftPanel && wide.matches ? leftPanel + 24 : 0,
         right: cardShown && wide.matches ? CARD_ROOM : 0,
-        top: list && !wide.matches ? list.bottom + 8 : 0,
+        top: list && !wide.matches ? list.bottom + 8 : phoneLens ? PHONE_TITLE_BOTTOM : 0,
+        bottom: phoneLens ? window.innerHeight - lensCard.top + 8 : 0,
       });
     };
     update();
     wide.addEventListener('change', update);
     return () => wide.removeEventListener('change', update);
-  }, [cardShown, suggestionsShown, result]);
+  }, [cardShown, suggestionsShown, result, lens]);
 
   const goHome = useCallback(() => {
     if (!root) return;
@@ -278,6 +294,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       if (key === 'p') setPresenting((value) => !value);
       if (key === 'f') setMode(mode === 'hyperbolic' ? 'euclid' : 'hyperbolic');
       if (key === 't') toggleTheme();
+      if (key === 'g') setLens((on) => !on);
       if (key === '+' || key === '=') universeRef.current?.zoomBy(ZOOM_STEP);
       if (key === '-' || key === '_') universeRef.current?.zoomBy(1 / ZOOM_STEP);
       if (key === '0') universeRef.current?.resetZoom();
@@ -327,6 +344,15 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     }
   }
 
+  // "Hover" readout for the lens: hyperbolic distance from the centre, and how far out it's drawn.
+  function lensReadout() {
+    const target = hovered ?? selected;
+    const distance = target ? universeRef.current?.distanceFromCenter(target.id) : null;
+    if (!target || !distance) return 'Hover over a topic to measure how far it is from the centre.';
+    const units = distance.hyperbolic < 0.05 ? 'at the centre' : `${distance.hyperbolic.toFixed(1)} units from the centre`;
+    return `${target.title}: ${units}, drawn ${Math.round(distance.drawn * 100)}% of the way to the edge.`;
+  }
+
   const path = selected ? pathOf(selected.id, byId).map((id) => byId.get(id)!) : [];
   const breadcrumb = (id: number) =>
     pathOf(id, byId)
@@ -335,7 +361,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       .join(' › ');
 
   return (
-    <main className={['stage', presenting && 'presenting', suggestionsShown && 'suggesting'].filter(Boolean).join(' ')}>
+    <main className={['stage', presenting && 'presenting', suggestionsShown && 'suggesting', cardShown && 'reading'].filter(Boolean).join(' ')}>
       <canvas
         ref={canvasRef}
         className="universe"
@@ -426,6 +452,19 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
       <div className="toolbar">
         <button
+          className={lens ? 'theme-toggle lens-toggle on' : 'theme-toggle lens-toggle'}
+          onClick={() => setLens((on) => !on)}
+          aria-pressed={lens}
+          aria-label="Geometry lens"
+          title="Geometry lens (G): see how hyperbolic distance works"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="6.2" strokeDasharray="2 2.4" />
+            <circle cx="12" cy="12" r="3" strokeDasharray="1.6 2" />
+          </svg>
+        </button>
+        <button
           className="theme-toggle"
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -451,6 +490,33 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
           </button>
         </div>
       </div>
+
+      {lens && !suggestionsShown && (
+        <aside className="lens-card" aria-label="Geometry lens" ref={lensRef}>
+          <h3>Geometry lens</h3>
+          {mode === 'hyperbolic' ? (
+            <>
+              <p>
+                This is a <strong>Poincaré disk</strong>: the whole, infinite hyperbolic plane drawn inside one circle.
+              </p>
+              <p>
+                Each dashed ring is one more unit of hyperbolic distance from the centre. They crowd toward the edge because
+                hyperbolic space grows exponentially, which is the room thousands of topics need without clutter.
+              </p>
+              <p>
+                Clicking a topic applies a Möbius transformation, <code>z ↦ (z − a) / (1 − āz)</code>, which slides it to the centre
+                without distorting angles. Edges are geodesics: arcs that meet the rim at right angles.
+              </p>
+              <p className="lens-readout">{lensReadout()}</p>
+            </>
+          ) : (
+            <p>
+              In the flat view distances are ordinary, so the deepest topics pile up at the edge with no room to spare.
+              Switch to <strong>Hyperbolic</strong> to see the distance rings.
+            </p>
+          )}
+        </aside>
+      )}
 
       {cardShown && (
         <aside className="card" key={selected.id}>

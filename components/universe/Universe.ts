@@ -24,7 +24,7 @@ type Morph = { start: number; duration: number; from: number; to: number };
 type Growth = { start: number; duration: number; fromH: Float64Array; fromF: Float64Array; camera: { from: C; to: C } | null };
 type ZoomAnimation = { start: number; duration: number; fromScale: number; toScale: number; fromOffset: Pt; toOffset: Pt };
 type Label = { i: number; x: number; y: number; w: number; h: number };
-export type Insets = { top: number; right: number; left: number };
+export type Insets = { top: number; right: number; bottom: number; left: number };
 type Theme = {
   palette: RGB[]; // branch colours, run around the disk from purple through blue to green
   root: RGB;
@@ -143,6 +143,8 @@ export class Universe {
   private morph: Morph | null = null;
   private zoomAnimation: ZoomAnimation | null = null;
   private selectHandler: ((node: UNode) => void) | null = null;
+  private hoverHandler: ((node: UNode | null) => void) | null = null;
+  private lens = false; // the geometry lens: rings of equal hyperbolic distance
 
   private width = 0;
   private height = 0;
@@ -157,8 +159,8 @@ export class Universe {
   private radius = 0;
   private ox = 0;
   private oy = 0;
-  private inset: Insets = { top: 0, right: 0, left: 0 }; // room kept free for panels, e.g. the node card
-  private targetInset: Insets = { top: 0, right: 0, left: 0 };
+  private inset: Insets = { top: 0, right: 0, bottom: 0, left: 0 }; // room kept free for panels, e.g. the node card
+  private targetInset: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private raf = 0;
   private pointer: { id: number; x: number; y: number; startX: number; startY: number; dragging: boolean } | null = null;
   private touches = new Map<number, Pt>();
@@ -335,6 +337,29 @@ export class Universe {
     this.selectHandler = handler;
   }
 
+  // ── Beyond the contract: the geometry lens ───────────────────────────────────────────
+
+  // Rings one unit of hyperbolic distance apart around the centre, and around whatever is under the
+  // pointer, so you can see the geometry the layout lives in.
+  setLens(on: boolean) {
+    this.lens = on;
+    this.invalidate();
+  }
+
+  onHover(handler: (node: UNode | null) => void) {
+    this.hoverHandler = handler;
+  }
+
+  // How far a node is from the centre of the view: in hyperbolic distance, and as the fraction of the
+  // way to the rim it is drawn at (tanh(d / 2), which never reaches 1).
+  distanceFromCenter(id: number): { hyperbolic: number; drawn: number } | null {
+    const i = this.index.get(id);
+    if (i === undefined) return null;
+    const z = toOrigin({ re: this.hx[i], im: this.hy[i] }, this.center);
+    const drawn = Math.min(Math.hypot(z.re, z.im), 1 - 1e-12);
+    return { hyperbolic: 2 * Math.atanh(drawn), drawn };
+  }
+
   // ── Beyond the contract: zoom, theme, layout ─────────────────────────────────────────
 
   zoomBy(factor: number) {
@@ -357,7 +382,7 @@ export class Universe {
   // Keep room free at the edges for panels (the node card, the search suggestions); the disk glides
   // over to make room, shrinking only if the space left is narrower than the screen is tall.
   setInsets(insets: Partial<Insets>) {
-    this.targetInset = { top: 0, right: 0, left: 0, ...insets };
+    this.targetInset = { top: 0, right: 0, bottom: 0, left: 0, ...insets };
     this.invalidate();
   }
 
@@ -465,7 +490,7 @@ export class Universe {
       active = true;
     }
     let moved = false;
-    for (const side of ['top', 'right', 'left'] as const) {
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
       const gap = this.targetInset[side] - this.inset[side];
       if (!gap) continue;
       this.inset[side] = Math.abs(gap) < 0.5 ? this.targetInset[side] : this.inset[side] + gap * 0.16;
@@ -492,9 +517,9 @@ export class Universe {
   }
 
   private layoutViewport() {
-    const { top, right, left } = this.inset;
+    const { top, right, bottom, left } = this.inset;
     const usableWidth = this.width - left - right;
-    const usableHeight = this.height - top;
+    const usableHeight = this.height - top - bottom;
     this.baseRadius = Math.min(usableWidth, usableHeight) * 0.46;
     this.baseOx = left + usableWidth / 2;
     this.baseOy = top + usableHeight / 2 + Math.min(24, usableHeight * 0.02);
@@ -609,6 +634,8 @@ export class Universe {
     const curved = this.blend < 0.5;
     const onScreen = (i: number) => this.sx[i] > -40 && this.sx[i] < this.width + 40 && this.sy[i] > -40 && this.sy[i] < this.height + 40;
 
+    if (this.lens && hyperbolic > 0.01) this.drawDistanceRings(hyperbolic);
+
     // Edges, batched by colour and opacity so the canvas changes style a few hundred times, not thousands.
     const edgeGroups = new Map<number, number[]>();
     for (let i = 0; i < this.nodes.length; i++) {
@@ -681,8 +708,64 @@ export class Universe {
       ctx.stroke();
     }
 
+    if (this.lens && hyperbolic > 0.5 && this.hover >= 0 && this.hover !== this.focus) this.drawHoverRings(this.hover);
+
     this.drawReticle();
     this.drawLabels();
+  }
+
+  // Circles of hyperbolic radius 1, 2, 3… around the centre. In the Poincaré disk a circle of hyperbolic
+  // radius d around the centre is a Euclidean circle of radius tanh(d / 2), so they crowd toward the
+  // rim: there is exponentially more room out there.
+  private drawDistanceRings(alpha: number) {
+    const { ctx, theme } = this;
+    ctx.save();
+    ctx.setLineDash([3, 5]);
+    ctx.lineWidth = 1;
+    ctx.font = `500 10.5px ${this.font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let d = 1; d <= 5; d++) {
+      const r = Math.tanh(d / 2) * this.radius;
+      ctx.strokeStyle = `rgba(${theme.ink}, ${0.3 * alpha})`;
+      ctx.beginPath();
+      ctx.arc(this.ox, this.oy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      if (d === 5) continue; // the outer rings bunch up too tightly to label
+      // Distance labels along the lower-left diagonal, out of the way of the focus label.
+      const x = this.ox - r * Math.SQRT1_2;
+      const y = this.oy + r * Math.SQRT1_2;
+      ctx.fillStyle = `rgba(${theme.halo}, ${0.9 * alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(${theme.ink}, ${0.55 * alpha})`;
+      ctx.fillText(String(d), x, y + 0.5);
+    }
+    ctx.restore();
+  }
+
+  // Circles of hyperbolic radius ½ and 1 around node i. Off-centre, a hyperbolic circle is still a
+  // Euclidean circle, but smaller and shifted toward the centre: the closer to the rim, the more so.
+  private drawHoverRings(i: number) {
+    const { ctx, theme } = this;
+    const cx = (this.sx[i] - this.ox) / this.radius;
+    const cy = (this.sy[i] - this.oy) / this.radius;
+    const c2 = cx * cx + cy * cy;
+    if (c2 >= 1) return;
+    ctx.save();
+    ctx.lineWidth = 1.2;
+    for (const d of [0.5, 1]) {
+      const t = Math.tanh(d / 2);
+      const k = 1 - t * t * c2;
+      const scale = (1 - t * t) / k;
+      const r = (t * (1 - c2)) / k;
+      ctx.strokeStyle = `rgba(${theme.accent}, ${d === 1 ? 0.45 : 0.7})`;
+      ctx.beginPath();
+      ctx.arc(this.ox + cx * scale * this.radius, this.oy + cy * scale * this.radius, r * this.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // A focus ring with corner brackets around the node at the centre.
@@ -934,6 +1017,7 @@ export class Universe {
     if (hover !== this.hover) {
       this.hover = hover;
       this.canvas.style.cursor = hover >= 0 ? 'pointer' : 'grab';
+      this.hoverHandler?.(hover >= 0 ? this.nodes[hover] : null);
       this.invalidate();
     }
   };
@@ -956,6 +1040,7 @@ export class Universe {
   private onPointerLeave = () => {
     if (this.hover >= 0) {
       this.hover = -1;
+      this.hoverHandler?.(null);
       this.invalidate();
     }
   };
