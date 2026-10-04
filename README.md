@@ -63,6 +63,11 @@ The user's query is converted into an embedding. TiDB retrieves semantically rel
 
 When a user expands a topic, the app retrieves related source material. Gemini helps organize that information into new branches, which appear in the existing universe.
 
+## SHAPES THAT NEEDED TO BE MATCHED
+nodes.json:          [{ id, title, summary, parentId, depth, url, type }]
+POST /api/search     {query} → { matches: [{ id, title, score, path: [ids] }], focusNodeId }
+GET  /api/node/:id   → Node + path: [ids]
+
 ## Keeping It Fast
 
 The main dataset is prepared and cached ahead of time. Ordinary navigation happens in the browser.
