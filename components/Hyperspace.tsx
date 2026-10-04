@@ -142,11 +142,38 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     universe.onSelect(focusNode);
     universe.onHover(setHovered);
     universeRef.current = universe;
+    // A shared link (?topic=<id>) opens on that topic.
+    const shared = Number(new URLSearchParams(window.location.search).get('topic'));
+    const start = nodes.find((node) => node.id === shared);
+    if (start) focusNode(start);
     return () => {
       universe.destroy();
       universeRef.current = null;
     };
   }, [nodes, fontFamily, focusNode]);
+
+  // Keep the address bar on the topic you're looking at, so it can be shared or bookmarked. It waits
+  // for the universe, which reads a shared ?topic= first.
+  useEffect(() => {
+    if (!nodes) return;
+    const url = new URL(window.location.href);
+    if (selected) url.searchParams.set('topic', String(selected.id));
+    else url.searchParams.delete('topic');
+    if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  }, [selected, nodes]);
+
+  const [copied, setCopied] = useState<number | null>(null);
+  const copyLink = useCallback(async (node: UNode) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('topic', String(node.id));
+    try {
+      await navigator.clipboard.writeText(url.href);
+      setCopied(node.id);
+      setTimeout(() => setCopied((id) => (id === node.id ? null : id)), 1800);
+    } catch {
+      // Clipboard blocked (e.g. not a secure context): the address bar has the link anyway.
+    }
+  }, []);
 
   // The layout's inline script already applied the saved theme to <html> before the first paint.
   useEffect(() => {
@@ -747,6 +774,22 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         <aside className="card" key={selected.id}>
           <button className="card-close" onClick={() => setSelected(null)} aria-label="Close">
             ×
+          </button>
+          <button
+            className={copied === selected.id ? 'card-share copied' : 'card-share'}
+            onClick={() => copyLink(selected)}
+            aria-label="Copy a link to this topic"
+            title={copied === selected.id ? 'Link copied' : 'Copy a link to this topic'}
+          >
+            {copied === selected.id ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12.5 4.5 4.5L19 7.5" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 13.5a4 4 0 0 0 5.7.3l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2M14 10.5a4 4 0 0 0-5.7-.3l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2" />
+              </svg>
+            )}
           </button>
           {path.length > 1 && (
             <nav className="crumbs" aria-label="Path">

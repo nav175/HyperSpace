@@ -387,11 +387,42 @@ button {
   line-height: 1;
 }
 
+.card-share {
+  position: absolute;
+  top: 14px;
+  right: 46px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--text-2);
+}
+
+.card-share:hover {
+  color: var(--text);
+}
+
+.card-share.copied {
+  color: var(--accent);
+}
+
+.card-share svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .crumbs {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 0;
-  margin-right: 28px;
+  margin-right: 60px; /* clear of the share and close buttons */
   font-size: 12px;
   color: var(--text-3);
 }
@@ -413,7 +444,7 @@ button {
 
 .card h2 {
   margin-top: 10px;
-  margin-right: 24px;
+  margin-right: 56px;
   font-family: var(--font-display);
   font-size: 24px;
   font-weight: 600;
