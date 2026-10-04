@@ -96,6 +96,10 @@ const FLAT_ZOOM = 2.4;
 const MAX_LABELS = 56;
 const MIN_MAGNIFY = 0.7;
 const SEARCH_FADE = 0.6; // how much of everything that isn't a match (or on the way to one) fades during a search
+// The field lens that follows the mouse over the disk.
+const LENS_PUSH = 0.9; // fisheye strength: points near the cursor spread out by up to 1.9×
+const LENS_GROW = 0.45; // how much more room (and so size and labels) the hovered field's topics get
+const LENS_DIM = 0.6; // how much other fields' topics inside the lens fade
 const MAX_MAGNIFY = 8;
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -147,6 +151,16 @@ export class Universe {
   private selectHandler: ((node: UNode) => void) | null = null;
   private hoverHandler: ((node: UNode | null) => void) | null = null;
   private lens = false; // the geometry lens: rings of equal hyperbolic distance
+  // Field lens: follows the mouse over the disk, spreading nodes apart like a fisheye and bringing out
+  // the field (top-level branch) under the cursor.
+  private mouse: Pt | null = null; // mouse or pen over the canvas; touch has no hover
+  private lensAmount = 0; // eased 0 → 1 while the mouse is over the disk
+  private lensBranch = -1; // the field under the cursor
+  private lensSince = 0; // when that field was entered, so its topics can pop in
+  private lensWeight = new Float32Array(0); // per node: 0 outside the lens, up to 1 at its centre
+  private branchTop: number[] = []; // each field's top-level node
+  private branchSize: number[] = [];
+  private readonly calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   private width = 0;
   private height = 0;
@@ -238,11 +252,15 @@ export class Universe {
       this.branch[i] = j >= 0 ? branchOfTop.get(j)! : -1;
     });
     this.branchPosition = tops.map((_, k) => (tops.length > 1 ? k / (tops.length - 1) : 0));
+    this.branchTop = tops.map(({ i }) => i);
+    this.branchSize = tops.map(() => 0);
+    for (let i = 0; i < n; i++) if (this.branch[i] >= 0) this.branchSize[this.branch[i]]++;
     this.recolor();
 
     this.sx = new Float32Array(n);
     this.sy = new Float32Array(n);
     this.sf = new Float32Array(n);
+    this.lensWeight = new Float32Array(n);
     this.highlighted.clear();
     this.highlightPath.clear();
     this.focus = focusId !== undefined && this.index.has(focusId) ? this.index.get(focusId)! : this.parent.indexOf(-1);
@@ -528,6 +546,15 @@ export class Universe {
       if (t >= 1) this.zoomAnimation = null;
       active = true;
     }
+    // The field lens shows while the mouse rests over the disk, and steps aside for a drag or a pinch.
+    const overDisk = this.mouse && Math.hypot(this.mouse.x - this.ox, this.mouse.y - this.oy) < this.radius * 1.02;
+    const lensTarget = overDisk && !this.calm && !this.pointer?.dragging && this.touches.size < 2 ? 1 : 0;
+    if (this.lensAmount !== lensTarget) {
+      const gap = lensTarget - this.lensAmount;
+      this.lensAmount = Math.abs(gap) < 0.01 ? lensTarget : this.lensAmount + gap * 0.14;
+    }
+    if (this.lensAmount > 0) active = true; // its ring keeps turning
+
     const dimTarget = this.highlighted.size ? 1 : 0;
     if (this.dim !== dimTarget) {
       const gap = dimTarget - this.dim;
@@ -613,7 +640,7 @@ export class Universe {
   }
 
   // Screen positions for every node: hyperbolic view, flat view, or a blend while morphing.
-  private project() {
+  private project(now: number) {
     const { re: cr, im: ci } = this.center;
     const m = this.blend;
     for (let i = 0; i < this.nodes.length; i++) {
@@ -639,6 +666,49 @@ export class Universe {
       // Zooming in gives every node more room on screen, so more of them earn labels.
       this.sf[i] = Math.min(1, f * this.magnify);
     }
+    this.applyFieldLens(now);
+  }
+
+  private lensRadius() {
+    return Math.max(80, Math.min(150, Math.min(this.width, this.height) * 0.14));
+  }
+
+  // The field lens, applied on screen after projection: a fisheye around the cursor (points spread out
+  // most at the centre and not at all at the edge, so there's no seam), with the hovered field's
+  // topics given more room so they grow and earn labels around the cursor.
+  private applyFieldLens(now: number) {
+    this.lensWeight.fill(0);
+    const a = this.lensAmount;
+    if (a < 0.01 || !this.mouse) return;
+    const { x: mx, y: my } = this.mouse;
+    const R = this.lensRadius();
+    // The field under the cursor is the field of the nearest node.
+    let nearest = -1;
+    let best = R * R;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const d2 = (this.sx[i] - mx) ** 2 + (this.sy[i] - my) ** 2;
+      if (d2 < best) {
+        best = d2;
+        nearest = i;
+      }
+    }
+    if (nearest >= 0 && this.branch[nearest] >= 0 && this.branch[nearest] !== this.lensBranch) {
+      this.lensBranch = this.branch[nearest];
+      this.lensSince = now;
+    }
+    const pop = clamp01((now - this.lensSince) / 420); // a new field's topics populate over ~0.4 s
+    for (let i = 0; i < this.nodes.length; i++) {
+      const dx = this.sx[i] - mx;
+      const dy = this.sy[i] - my;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= R * R) continue;
+      const u = 1 - Math.sqrt(d2) / R; // 1 at the cursor, 0 at the edge
+      const push = 1 + LENS_PUSH * a * u * u; // stays monotonic for LENS_PUSH < 3, so nothing crosses over
+      this.sx[i] = mx + dx * push;
+      this.sy[i] = my + dy * push;
+      this.lensWeight[i] = a * u;
+      if (this.branch[i] === this.lensBranch) this.sf[i] = Math.min(1, this.sf[i] + LENS_GROW * a * u * pop);
+    }
   }
 
   private draw(now: number) {
@@ -646,7 +716,7 @@ export class Universe {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
     if (!this.nodes.length) return;
-    this.project();
+    this.project(now);
     const hyperbolic = 1 - this.blend;
 
     // The disk itself: a faint glow and a hairline rim, on a soft lit surface in the light theme.
@@ -753,10 +823,12 @@ export class Universe {
       ctx.stroke();
     }
 
+    if (this.lensAmount > 0.01 && this.mouse) this.drawFieldLens(now);
     if (this.lens && hyperbolic > 0.5 && this.hover >= 0 && this.hover !== this.focus) this.drawHoverRings(this.hover);
 
     this.drawReticle();
     this.drawLabels();
+    this.drawFieldLensLabel();
   }
 
   // Circles of hyperbolic radius 1, 2, 3… around the centre. In the Poincaré disk a circle of hyperbolic
@@ -787,6 +859,78 @@ export class Universe {
       ctx.fillStyle = `rgba(${theme.ink}, ${0.55 * alpha})`;
       ctx.fillText(String(d), x, y + 0.5);
     }
+    ctx.restore();
+  }
+
+  // The lens itself: a soft glow and a slowly turning ring in the field's colour, three points orbiting
+  // it, and the field's name and size above.
+  private drawFieldLens(now: number) {
+    const { ctx, theme } = this;
+    const a = this.lensAmount;
+    const { x, y } = this.mouse!;
+    const R = this.lensRadius();
+    const k = this.lensBranch;
+    const [r, g, b] = k >= 0 ? this.branchRgb[k] : theme.root;
+    ctx.save();
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, R);
+    glow.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.12 * a})`);
+    glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([2, 7]);
+    ctx.lineDashOffset = -now / 45;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.55 * a})`;
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([1, 9]);
+    ctx.lineDashOffset = now / 60;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.3 * a})`;
+    ctx.beginPath();
+    ctx.arc(x, y, R * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.85 * a})`;
+    for (let j = 0; j < 3; j++) {
+      const t = now / 1400 + (j * Math.PI * 2) / 3;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(t) * R, y + Math.sin(t) * R, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // The field's name and size, above the lens (below it near the top edge), drawn over the topic labels.
+  private drawFieldLensLabel() {
+    const { ctx, theme } = this;
+    const a = this.lensAmount;
+    const k = this.lensBranch;
+    if (a < 0.01 || !this.mouse || k < 0) return;
+    const { x, y } = this.mouse;
+    const R = this.lensRadius();
+    const [r, g, b] = this.branchRgb[k];
+    ctx.save();
+    const field = this.nodes[this.branchTop[k]];
+    const text = `${field.title.toUpperCase()} · ${this.branchSize[k].toLocaleString()} TOPICS`;
+    ctx.font = `600 10.5px ${this.font}`;
+    ctx.letterSpacing = '0.8px';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const ty = y - R - 12 < 14 ? y + R + 14 : y - R - 12;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `rgba(${theme.halo}, ${0.85 * a})`;
+    ctx.strokeText(text, x, ty);
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+    ctx.fillText(text, x, ty);
+    ctx.letterSpacing = '0px';
+    ctx.textAlign = 'start';
     ctx.restore();
   }
 
@@ -847,7 +991,12 @@ export class Universe {
       if (this.sf[i] > 0.14 || i === this.focus || this.highlighted.has(i) || i === this.hover) candidates.push(i);
     }
     const priority = (i: number) =>
-      (i === this.focus ? 100 : 0) + (i === this.hover ? 50 : 0) + (this.highlighted.has(i) ? 20 : 0) + this.sf[i] * (this.isCategory[i] ? 1.6 : 1);
+      (i === this.focus ? 100 : 0) +
+      (i === this.hover ? 50 : 0) +
+      (this.highlighted.has(i) ? 20 : 0) +
+      // The hovered field's topics near the cursor win label space, so they populate around it.
+      (this.lensWeight[i] > 0 && this.branch[i] === this.lensBranch ? 6 * this.lensWeight[i] : 0) +
+      this.sf[i] * (this.isCategory[i] ? 1.6 : 1);
     candidates.sort((a, b) => priority(b) - priority(a));
 
     this.labels = [];
@@ -932,9 +1081,13 @@ export class Universe {
 
   // During a search, everything except the matches, the branches leading to them, and the node in
   // focus (or under the pointer) fades back, so the matches stand out. An edge belongs to its child.
+  // Also: inside the field lens, other fields' topics fade so the hovered field stands out.
   private fadeFor(i: number) {
-    if (!this.dim || this.highlightPath.has(i) || i === this.focus || i === this.hover) return 1;
-    return 1 - SEARCH_FADE * this.dim;
+    let fade = 1;
+    if (this.dim && !this.highlightPath.has(i) && i !== this.focus && i !== this.hover) fade = 1 - SEARCH_FADE * this.dim;
+    const w = this.lensWeight[i];
+    if (w > 0 && this.branch[i] !== this.lensBranch) fade *= 1 - LENS_DIM * w;
+    return fade;
   }
 
   private nodeRadius(i: number) {
@@ -1041,6 +1194,10 @@ export class Universe {
 
   private onPointerMove = (e: PointerEvent) => {
     const { x, y } = this.local(e);
+    if (e.pointerType !== 'touch') {
+      this.mouse = { x, y };
+      this.invalidate();
+    }
     if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, { x, y });
     if (this.touches.size === 2) {
       const [a, b] = [...this.touches.values()];
@@ -1085,6 +1242,8 @@ export class Universe {
   };
 
   private onPointerLeave = () => {
+    this.mouse = null;
+    this.invalidate();
     if (this.hover >= 0) {
       this.hover = -1;
       this.hoverHandler?.(null);
