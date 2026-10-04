@@ -136,6 +136,8 @@ export class Universe {
   private dim = 0; // 0 → 1 as a search's non-matches fade back, eased in step()
   private flight: Flight | null = null;
   private growth: Growth | null = null;
+  private route: number[] = []; // stops still to visit on a flyAlong tour
+  private routeEnd: { ids: number[]; focusId: number } | null = null; // framed once the tour is over
   private gx = new Float64Array(0); // positions mid-growth (hyperbolic, then flat)
   private gy = new Float64Array(0);
   private gfx = new Float64Array(0);
@@ -252,8 +254,34 @@ export class Universe {
   flyTo(id: number) {
     const i = this.index.get(id);
     if (i === undefined) return;
+    this.route = [];
+    this.routeEnd = null;
+    this.flyToIndex(i);
+  }
+
+  // Fly through `ids` one after another, a little quicker per hop than flyTo: e.g. the path between two
+  // topics, up to the field they share and back down. Then pull back to frame the whole path, so both
+  // ends are in view. Any other flight or a drag ends the tour.
+  flyAlong(ids: number[]) {
+    const stops = ids.map((id) => this.index.get(id)).filter((i): i is number => i !== undefined);
+    if (!stops.length) return;
+    this.route = stops.slice(1);
+    this.routeEnd = { ids, focusId: ids[ids.length - 1] };
+    this.flyToIndex(stops[0], 0.6);
+  }
+
+  // Hyperbolic distance between two topics, in the same units as the lens rings.
+  distanceBetween(a: number, b: number): number | null {
+    const i = this.index.get(a);
+    const j = this.index.get(b);
+    if (i === undefined || j === undefined) return null;
+    const z = toOrigin({ re: this.hx[i], im: this.hy[i] }, { re: this.hx[j], im: this.hy[j] });
+    return 2 * Math.atanh(Math.min(Math.hypot(z.re, z.im), 1 - 1e-12));
+  }
+
+  private flyToIndex(i: number, pace = 1) {
     this.focus = i;
-    this.flyToPoint({ re: this.hx[i], im: this.hy[i] }, { x: this.fx[i], y: this.fy[i] }, this.nodes[i].depth === 0 ? 1 : FLAT_ZOOM);
+    this.flyToPoint({ re: this.hx[i], im: this.hy[i] }, { x: this.fx[i], y: this.fy[i] }, this.nodes[i].depth === 0 ? 1 : FLAT_ZOOM, pace);
   }
 
   // Fly to where all of `ids` are in view together (e.g. every search match) instead of putting one
@@ -262,6 +290,8 @@ export class Universe {
     const members = ids.map((id) => this.index.get(id)).filter((i): i is number => i !== undefined);
     if (!members.length) return;
     const focus = focusId === undefined ? undefined : this.index.get(focusId);
+    this.route = [];
+    this.routeEnd = null;
     this.focus = focus ?? members[0];
     if (members.length === 1) {
       this.flyTo(this.nodes[members[0]].id);
@@ -277,11 +307,16 @@ export class Universe {
     this.flyToPoint(center, { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, zoom);
   }
 
-  highlight(ids: number[]) {
+  // `ancestors: false` lights just these nodes and the edges between them, e.g. the path between two
+  // topics, instead of every branch back to the root.
+  highlight(ids: number[], { ancestors = true }: { ancestors?: boolean } = {}) {
     this.highlighted = new Set(ids.map((id) => this.index.get(id)).filter((i): i is number => i !== undefined));
     // Light up the branches leading to each match, too.
     this.highlightPath = new Set();
-    for (const i of this.highlighted) for (let j = i; j >= 0; j = this.parent[j]) this.highlightPath.add(j);
+    for (const i of this.highlighted) {
+      if (ancestors) for (let j = i; j >= 0; j = this.parent[j]) this.highlightPath.add(j);
+      else this.highlightPath.add(i);
+    }
     this.invalidate();
   }
 
@@ -403,11 +438,12 @@ export class Universe {
   // ── Frame loop ───────────────────────────────────────────────────────────────────────
 
   // Glide the centre of the disk to `point` (and the flat view to `flatTo` at `zoomTo`).
-  private flyToPoint(point: C, flatTo: Pt, zoomTo: number) {
+  // `pace` scales the duration, e.g. shorter hops on a tour.
+  private flyToPoint(point: C, flatTo: Pt, zoomTo: number, pace = 1) {
     if (this.growth) this.growth.camera = null; // the flight drives the camera from here
     const target = toOrigin(point, this.center);
     const distance = 2 * Math.atanh(Math.min(Math.hypot(target.re, target.im), 1 - 1e-12));
-    const duration = 650 + 150 * Math.min(distance, 4);
+    const duration = (650 + 150 * Math.min(distance, 4)) * pace;
     this.flight = {
       start: performance.now(),
       duration,
@@ -447,7 +483,16 @@ export class Universe {
       this.center = fromOrigin(alongGeodesic(f.target, e), f.from);
       this.flatCenter = { x: lerp(f.flatFrom.x, f.flatTo.x, e), y: lerp(f.flatFrom.y, f.flatTo.y, e) };
       this.zoom = lerp(f.zoomFrom, f.zoomTo, e);
-      if (t >= 1) this.flight = null;
+      if (t >= 1) {
+        this.flight = null;
+        const next = this.route.shift();
+        if (next !== undefined) this.flyToIndex(next, 0.6);
+        else if (this.routeEnd) {
+          const { ids, focusId } = this.routeEnd;
+          this.routeEnd = null;
+          this.flyToAll(ids, focusId);
+        }
+      }
       active = true;
     }
     if (this.morph) {
@@ -955,6 +1000,8 @@ export class Universe {
   // Drag the plane: the point under the cursor follows it, by a hyperbolic translation.
   private pan(x0: number, y0: number, x1: number, y1: number) {
     this.flight = null;
+    this.route = [];
+    this.routeEnd = null;
     if (this.growth) this.growth.camera = null;
     if (this.blend < 0.5) {
       const toDisk = (x: number, y: number): C => {

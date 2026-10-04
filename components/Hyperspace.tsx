@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { pathOf, searchUniverse, type SearchResult } from './search';
 import { Universe, type Mode, type ThemeName, type UNode } from './universe/Universe';
 
+type Connection = {
+  from: UNode;
+  to: UNode;
+  hops: number[]; // node ids along the map's path, from → shared field → to
+  distance: number | null; // hyperbolic distance between the two
+  explanation: string | null;
+  status: 'loading' | 'done' | 'error';
+};
+
 const ZOOM_STEP = 1.5;
 const VISIBLE_MATCHES = 6; // suggestions listed under the search bar, and framed on Enter
 const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the card and suggestions beside the disk
@@ -65,9 +74,30 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     searchLit.current = ids;
     universeRef.current?.highlight(ids);
   }, []);
+
+  const closeConnection = useCallback(() => {
+    setConnection(null);
+    universeRef.current?.highlight(searchLit.current);
+  }, []);
   const root = useMemo(() => nodes?.find((node) => node.parentId === null) ?? null, [nodes]);
 
+  // "How are these connected?": the topic waiting for a partner, and the connection being shown.
+  const [connectFrom, setConnectFrom] = useState<UNode | null>(null);
+  const [connection, setConnection] = useState<Connection | null>(null);
+  // Picking any topic (map, search, breadcrumbs) completes a pending connection. focusNode has to stay
+  // stable (the universe holds on to it), so it reads the pending topic and the handler from refs.
+  const connectFromRef = useRef<UNode | null>(null);
+  const connectRef = useRef<(from: UNode, to: UNode) => void>(() => {});
+  useEffect(() => {
+    connectFromRef.current = connectFrom;
+  }, [connectFrom]);
+
   const focusNode = useCallback((node: UNode) => {
+    const from = connectFromRef.current;
+    if (from && from.id !== node.id) {
+      connectRef.current(from, node);
+      return;
+    }
     universeRef.current?.flyTo(node.id);
     setSelected(node);
     setExplored(true);
@@ -135,7 +165,8 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const suggestionsShown = resultsOpen && result !== null;
   // While you look through new suggestions the card for the last topic steps aside, so the disk keeps
   // its size; it returns when the list closes (Enter swaps in the best match).
-  const cardShown = selected !== null && !suggestionsShown;
+  const connectionShown = connection !== null && !suggestionsShown;
+  const cardShown = selected !== null && !suggestionsShown && !connection;
   useEffect(() => {
     const wide = window.matchMedia(WIDE);
     const update = () => {
@@ -147,7 +178,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       const phoneLens = lensCard && !wide.matches;
       universeRef.current?.setInsets({
         left: leftPanel && wide.matches ? leftPanel + 24 : 0,
-        right: cardShown && wide.matches ? CARD_ROOM : 0,
+        right: (cardShown || connectionShown) && wide.matches ? CARD_ROOM : 0,
         top: list && !wide.matches ? list.bottom + 8 : phoneLens ? PHONE_TITLE_BOTTOM : 0,
         bottom: phoneLens ? window.innerHeight - lensCard.top + 8 : 0,
       });
@@ -155,7 +186,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     update();
     wide.addEventListener('change', update);
     return () => wide.removeEventListener('change', update);
-  }, [cardShown, suggestionsShown, result, lens]);
+  }, [cardShown, connectionShown, suggestionsShown, result, lens]);
 
   const goHome = useCallback(() => {
     if (!root) return;
@@ -222,6 +253,14 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     const ids = found.matches.slice(0, VISIBLE_MATCHES).map((match) => match.id);
     const best = found.focusNodeId ?? ids[0];
     if (best === undefined) return;
+    // Picking a partner for "How are these connected?": Enter connects to the best match.
+    const from = connectFromRef.current;
+    const bestNode = byId.get(best);
+    if (from && bestNode && bestNode.id !== from.id) {
+      connect(from, bestNode);
+      inputRef.current?.blur();
+      return;
+    }
     universeRef.current?.flyToAll(ids, best);
     setSelected(window.matchMedia(WIDE).matches ? (byId.get(best) ?? null) : null);
     setExplored(true);
@@ -282,9 +321,12 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         return;
       }
       if (e.key === 'Escape') {
-        // One layer per press: the suggestions, then the search field, then the card.
+        // One layer per press: the suggestions, the search field, picking a topic to connect, the
+        // connection, then the card.
         if (resultsOpen) setResultsOpen(false);
         else if (typing) inputRef.current?.blur();
+        else if (connectFrom) setConnectFrom(null);
+        else if (connection) closeConnection();
         else setSelected(null);
         return;
       }
@@ -301,7 +343,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goHome, mode, resultsOpen, setMode, toggleTheme]);
+  }, [goHome, mode, resultsOpen, setMode, toggleTheme, connectFrom, connection, closeConnection]);
 
   // Expand: Gemini picks related Wikipedia topics to grow under this one (POST /api/expand). The new
   // branches grow out of the node and light up for a moment, then any search highlight comes back.
@@ -343,6 +385,41 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       setGrowing(null);
     }
   }
+
+  // Show how two topics connect: the camera travels the tree path between them (up to the field they
+  // share, then down), the path lights up, and Gemini explains the link.
+  function connect(from: UNode, to: UNode) {
+    setConnectFrom(null);
+    const up = pathOf(from.id, byId);
+    const down = pathOf(to.id, byId);
+    let shared = 0;
+    while (shared < up.length && shared < down.length && up[shared] === down[shared]) shared++;
+    const hops = [...up.slice(Math.max(0, shared - 1)).reverse(), ...down.slice(shared)];
+    universeRef.current?.highlight(hops, { ancestors: false });
+    universeRef.current?.flyAlong(hops);
+    setSelected(to);
+    setExplored(true);
+    setResultsOpen(false);
+    const distance = universeRef.current?.distanceBetween(from.id, to.id) ?? null;
+    setConnection({ from, to, hops, distance, explanation: null, status: 'loading' });
+    const same = (c: Connection | null) => c !== null && c.from.id === from.id && c.to.id === to.id;
+    fetch('/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: { title: from.title, summary: from.summary },
+        to: { title: to.title, summary: to.summary },
+        path: hops.map((id) => byId.get(id)?.title ?? ''),
+      }),
+      signal: AbortSignal.timeout(20_000),
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<{ explanation: string }>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then(({ explanation }) => setConnection((c) => (same(c) ? { ...c!, explanation, status: 'done' } : c)))
+      .catch(() => setConnection((c) => (same(c) ? { ...c!, status: 'error' } : c)));
+  }
+  useEffect(() => {
+    connectRef.current = connect;
+  });
 
   // "Hover" readout for the lens: hyperbolic distance from the centre, and how far out it's drawn.
   function lensReadout() {
@@ -518,6 +595,46 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         </aside>
       )}
 
+      {connectFrom && (
+        <div className="connect-hint" role="status">
+          <span>
+            Pick another topic to connect with <strong>{connectFrom.title}</strong>: click the map or search
+          </span>
+          <button onClick={() => setConnectFrom(null)}>Cancel</button>
+        </div>
+      )}
+
+      {connectionShown && (
+        <aside className="card connection-card" key={`${connection.from.id}-${connection.to.id}`}>
+          <button className="card-close" onClick={closeConnection} aria-label="Close">
+            ×
+          </button>
+          <p className="card-meta">How they connect</p>
+          <h2>
+            {connection.from.title} <span className="connect-arrow">↔</span> {connection.to.title}
+          </h2>
+          <ol className="route" aria-label="Path on the map">
+            {connection.hops.map((id) => (
+              <li key={id}>
+                <button onClick={() => universeRef.current?.flyTo(id)}>{byId.get(id)?.title}</button>
+              </li>
+            ))}
+          </ol>
+          <p className="route-meta">
+            {connection.hops.length - 1} {connection.hops.length === 2 ? 'step' : 'steps'} apart on the map
+            {connection.distance !== null && ` · ${connection.distance.toFixed(1)} units of hyperbolic distance`}
+          </p>
+          <p className={connection.status === 'loading' ? 'card-summary thinking' : 'card-summary'}>
+            {connection.status === 'loading'
+              ? 'Gemini is tracing the link…'
+              : connection.status === 'error'
+                ? "Couldn't reach Gemini just now. The path above still shows how they're related."
+                : connection.explanation}
+          </p>
+          {connection.status === 'done' && <p className="grow-note">Explained by Gemini</p>}
+        </aside>
+      )}
+
       {cardShown && (
         <aside className="card" key={selected.id}>
           <button className="card-close" onClick={() => setSelected(null)} aria-label="Close">
@@ -554,6 +671,18 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
                 <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5" />
               </svg>
               {growing === selected.id ? 'Growing…' : 'Grow with Gemini'}
+            </button>
+            <button
+              className={connectFrom?.id === selected.id ? 'connect-button on' : 'connect-button'}
+              onClick={() => setConnectFrom(connectFrom?.id === selected.id ? null : selected)}
+              title="Pick another topic to see how the two are connected"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="18" r="2.5" />
+                <circle cx="18" cy="6" r="2.5" />
+                <path d="M8 16.5c3-1 4.5-3.5 5.5-6.5.5-1.5 1.5-2.6 2.6-3.2" />
+              </svg>
+              Connect
             </button>
             <a className="card-link" href={selected.url} target="_blank" rel="noreferrer">
               Read on Wikipedia

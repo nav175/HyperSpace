@@ -607,6 +607,125 @@ button {
   animation: spin 1.1s linear infinite;
 }
 
+.connect-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--fill);
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.connect-button:hover {
+  background: var(--fill-strong);
+}
+
+.connect-button:active {
+  transform: scale(0.96);
+}
+
+.connect-button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.connect-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* "How are these connected?": the hint while picking, and the route on the connection card. */
+.connect-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 18px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  border: 1px solid var(--accent);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 12px 40px var(--shadow);
+  font-size: 13.5px;
+  color: var(--text-2);
+  z-index: 4;
+  animation: rise 0.2s ease-out;
+}
+
+.connect-hint strong {
+  color: var(--text);
+}
+
+.connect-hint button {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--fill-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.connect-arrow {
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+}
+
+.route li + li::before {
+  content: '›';
+  margin: 0 6px;
+  color: var(--text-3);
+}
+
+.route button {
+  color: var(--text-2);
+  border-radius: 6px;
+}
+
+.route button:hover {
+  color: var(--accent);
+}
+
+.route li:first-child button,
+.route li:last-child button {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.route-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.card-summary.thinking {
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
 .grow-note {
   margin-top: 10px;
   font-size: 12.5px;
@@ -782,5 +901,9 @@ button {
   }
   .hint {
     display: none;
+  }
+  .connect-hint {
+    bottom: 76px;
+    border-radius: 18px;
   }
 }

@@ -4,6 +4,7 @@
 // says why. Gemini's picks are cached in TiDB (the `expansions` table), so repeat Expands are instant.
 import { datasetVersion, getNode } from './api.mjs';
 import { pool } from './db.mjs';
+import { geminiJson } from './gemini.mjs';
 
 const WIKI_API = 'https://en.wikipedia.org/w/api.php';
 const USER_AGENT = 'HyperspaceStormHacks/0.1 (https://github.com/nav175/HyperSpace)';
@@ -12,13 +13,6 @@ const MAX_CANDIDATES = 120; // keeps the Gemini prompt small
 // Bump when the way children are chosen changes: cached rows from older code are then ignored
 // (and replaced on the next Expand) rather than served.
 const CACHE_TAG = 'v4';
-
-// Tried in order until one answers: Google retires model ids (gemini-2.0-flash now 404s) and the
-// newest flash model often returns 503 under load, so the fast, less contended ones go first.
-// GEMINI_MODEL, when set, goes before them all.
-const GEMINI_MODELS = [
-  ...new Set([process.env.GEMINI_MODEL?.trim(), 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'].filter(Boolean)),
-];
 
 export async function expandNode(nodeId, { depth = 1 } = {}) {
   const id = Number(nodeId);
@@ -186,8 +180,6 @@ async function toNodes(parent, picks) {
 // ── Gemini ─────────────────────────────────────────────────────────────────────────────────
 
 async function chooseWithGemini(parent, candidates) {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) return null;
   const shortlist = candidates.slice(0, MAX_CANDIDATES);
   const prompt = `You curate Hyperspace, a map of knowledge about artificial intelligence built from Wikipedia.
 The reader is expanding the topic "${parent.title}" (${parent.type}): ${String(parent.summary).slice(0, 300)}
@@ -207,51 +199,19 @@ ${shortlist.map((c) => `${c.id}\t${c.title}${c.category ? ' (category)' : ''}\t$
 
 Respond with JSON: {"children": [{"id": <candidate id>, "reason": "<short reason>"}]}`;
 
-  for (const model of GEMINI_MODELS) {
-    const picks = await askGemini(model, key, prompt, shortlist);
-    if (picks) return { picks, model };
+  const answer = await geminiJson(prompt);
+  if (!answer) return null;
+  const list = Array.isArray(answer.data) ? answer.data : (answer.data?.children ?? []);
+  const byId = new Map(shortlist.map((c) => [c.id, c]));
+  const picks = [];
+  for (const item of list) {
+    // Only ids from the candidate list count, so Gemini can't invent a page.
+    const candidate = byId.get(Number(item?.id));
+    if (!candidate || picks.some((p) => p.candidate === candidate)) continue;
+    picks.push({ candidate, reason: String(item.reason ?? '').trim().slice(0, 140) });
+    if (picks.length >= MAX_CHILDREN) break;
   }
-  return null;
-}
-
-async function askGemini(model, key, prompt, shortlist) {
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: 'application/json',
-          // Picking from a list needs little reasoning; this keeps an Expand around 2–4 s.
-          ...(model.startsWith('gemini-3') ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
-        },
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const text = (data.candidates?.[0]?.content?.parts ?? [])
-      .filter((part) => part.text && !part.thought)
-      .map((part) => part.text)
-      .join('');
-    if (!text) return null;
-    const parsed = JSON.parse(text);
-    const list = Array.isArray(parsed) ? parsed : (parsed.children ?? []);
-    const byId = new Map(shortlist.map((c) => [c.id, c]));
-    const picks = [];
-    for (const item of list) {
-      // Only ids from the candidate list count, so Gemini can't invent a page.
-      const candidate = byId.get(Number(item?.id));
-      if (!candidate || picks.some((p) => p.candidate === candidate)) continue;
-      picks.push({ candidate, reason: String(item.reason ?? '').trim().slice(0, 140) });
-      if (picks.length >= MAX_CHILDREN) break;
-    }
-    return picks;
-  } catch {
-    return null;
-  }
+  return { picks, model: answer.model };
 }
 
 // ── Filters (ported from ingest.mjs, plus places and citation pages, which show up in article links) ──
