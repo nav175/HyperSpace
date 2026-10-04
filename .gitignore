@@ -153,3 +153,6 @@ next-env.d.ts
 
 # Local-only agent context (do not publish)
 AGENT_HANDOFF.md
+
+# Rendered demo video (scratch renders of the opening titles)
+/demo/

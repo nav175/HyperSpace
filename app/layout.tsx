@@ -13,7 +13,8 @@ export const viewport: Viewport = {
 };
 
 // Applies the saved theme before the first paint, so a light-theme visitor never sees a dark flash.
-const applySavedTheme = `try{document.documentElement.dataset.theme=localStorage.getItem('hyperspace-theme')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
+// It also marks a visit with ?intro, so the page starts hidden behind the opening titles (Intro.tsx).
+const applySavedTheme = `try{document.documentElement.dataset.theme=localStorage.getItem('hyperspace-theme')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}try{var i=new URLSearchParams(location.search).get('intro');if(i!==null)document.documentElement.dataset.intro=i}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

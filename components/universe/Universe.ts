@@ -107,6 +107,7 @@ const CLICK_ZOOM = 1.8; // clicking empty space zooms in this much
 const MAX_MAGNIFY = 8;
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -166,6 +167,8 @@ export class Universe {
   private lensWeight = new Float32Array(0); // per node: 0 outside the lens, up to 1 at its centre
   private branchTop: number[] = []; // each field's top-level node
   private branchSize: number[] = [];
+  private intro: number | null = null; // 0 → 1 while the opening titles unfold the universe (setIntro)
+  private introAlpha = new Float32Array(0); // per node, how far it has faded in during the unfolding
   private readonly calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   private width = 0;
@@ -267,6 +270,7 @@ export class Universe {
     this.sy = new Float32Array(n);
     this.sf = new Float32Array(n);
     this.lensWeight = new Float32Array(n);
+    this.introAlpha = new Float32Array(n).fill(1);
     this.highlighted.clear();
     this.highlightPath.clear();
     this.focus = focusId !== undefined && this.index.has(focusId) ? this.index.get(focusId)! : this.parent.indexOf(-1);
@@ -465,6 +469,16 @@ export class Universe {
     this.animateView(1, { x: 0, y: 0 }, 480);
   }
 
+  // The opening titles (?intro) unfold the universe from its centre: at 0 nothing shows yet, and as
+  // `progress` runs to 1 every topic flies out along its geodesic, nearest first, while the rim draws
+  // itself around them. null (or 1) is the universe as usual.
+  setIntro(progress: number | null) {
+    this.intro = progress === null || progress >= 1 ? null : Math.max(0, progress);
+    if (this.intro === null) this.introAlpha.fill(1);
+    this.applyView();
+    this.invalidate();
+  }
+
   setTheme(name: ThemeName) {
     this.theme = THEMES[name];
     this.recolor();
@@ -588,7 +602,7 @@ export class Universe {
     }
     // The field lens shows while the mouse rests over the disk, and steps aside for a drag or a pinch.
     const overDisk = this.mouse && Math.hypot(this.mouse.x - this.ox, this.mouse.y - this.oy) < this.radius * 1.02;
-    const lensTarget = overDisk && !this.calm && !this.pointer?.dragging && this.touches.size < 2 ? 1 : 0;
+    const lensTarget = overDisk && !this.calm && this.intro === null && !this.pointer?.dragging && this.touches.size < 2 ? 1 : 0;
     if (this.lensAmount !== lensTarget) {
       const gap = lensTarget - this.lensAmount;
       this.lensAmount = Math.abs(gap) < 0.01 ? lensTarget : this.lensAmount + gap * 0.14;
@@ -639,7 +653,9 @@ export class Universe {
   }
 
   private applyView() {
-    this.radius = this.baseRadius * this.magnify;
+    // While it unfolds, the disk also grows the last few percent into place.
+    const unfold = this.intro === null ? 1 : 0.9 + 0.1 * easeOut(this.intro);
+    this.radius = this.baseRadius * this.magnify * unfold;
     this.ox = this.baseOx + this.offset.x;
     this.oy = this.baseOy + this.offset.y;
   }
@@ -694,6 +710,16 @@ export class Universe {
       let x = (nr * dr + ni * di) / d;
       let y = (ni * dr - nr * di) / d;
       let f = Math.max(0, 1 - (x * x + y * y));
+      if (this.intro !== null) {
+        // Unfolding: each topic sets off a little after the ones nearer the centre, so a wave runs out
+        // to the rim, and travels along its geodesic from the centre to where it belongs.
+        const r = Math.sqrt(x * x + y * y);
+        const s = easeOut(clamp01((this.intro - 0.3 * r) / 0.7));
+        this.introAlpha[i] = clamp01(s * 2.5);
+        const q = alongGeodesic({ re: x, im: y }, s);
+        x = q.re;
+        y = q.im;
+      }
       if (m > 0) {
         const ex = ((this.growth ? this.gfx[i] : this.fx[i]) - this.flatCenter.x) * this.zoom;
         const ey = ((this.growth ? this.gfy[i] : this.fy[i]) - this.flatCenter.y) * this.zoom;
@@ -769,12 +795,15 @@ export class Universe {
     if (!this.nodes.length) return;
     this.project(now);
     const hyperbolic = 1 - this.blend;
+    // While the universe unfolds, the glow brightens with it and the rim draws itself, clockwise from the top.
+    const reveal = this.intro === null ? 1 : easeInOut(clamp01(this.intro / 0.6));
+    const rimSweep = this.intro === null ? 1 : easeInOut(clamp01(this.intro / 0.8));
 
     // The disk itself: a faint glow and a hairline rim, on a soft lit surface in the light theme.
     if (hyperbolic > 0.01) {
       if (theme.disk) {
         ctx.save();
-        ctx.globalAlpha = hyperbolic;
+        ctx.globalAlpha = hyperbolic * reveal;
         ctx.shadowColor = theme.disk.shadow;
         ctx.shadowBlur = 70;
         ctx.shadowOffsetY = 18;
@@ -785,14 +814,19 @@ export class Universe {
         ctx.restore();
       }
       const glow = ctx.createRadialGradient(this.ox, this.oy, 0, this.ox, this.oy, this.radius);
-      glow.addColorStop(0, `rgba(${theme.glow}, ${theme.glowAlpha * hyperbolic})`);
-      glow.addColorStop(0.7, `rgba(${theme.glow}, ${theme.glowAlpha * 0.45 * hyperbolic})`);
+      glow.addColorStop(0, `rgba(${theme.glow}, ${theme.glowAlpha * hyperbolic * reveal})`);
+      glow.addColorStop(0.7, `rgba(${theme.glow}, ${theme.glowAlpha * 0.45 * hyperbolic * reveal})`);
       glow.addColorStop(1, `rgba(${theme.glow}, 0)`);
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(this.ox, this.oy, this.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = `rgba(${theme.ink}, ${theme.rimAlpha * hyperbolic})`;
+      if (rimSweep < 1) {
+        // The pen tip leads the rim round, brighter than the line it leaves behind.
+        ctx.beginPath();
+        ctx.arc(this.ox, this.oy, this.radius, -Math.PI / 2, -Math.PI / 2 + rimSweep * Math.PI * 2);
+      }
+      ctx.strokeStyle = `rgba(${theme.ink}, ${(this.intro === null ? theme.rimAlpha : theme.rimAlpha * 2.2) * hyperbolic})`;
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -877,9 +911,13 @@ export class Universe {
     if (this.lensAmount > 0.01 && this.mouse) this.drawFieldLens(now);
     if (this.lens && hyperbolic > 0.5 && this.hover >= 0 && this.hover !== this.focus) this.drawHoverRings(this.hover);
 
+    // Names come in once the universe has mostly unfolded.
+    ctx.save();
+    ctx.globalAlpha = this.intro === null ? 1 : clamp01((this.intro - 0.6) / 0.4);
     this.drawReticle();
     this.drawLabels();
     this.drawFieldLensLabel();
+    ctx.restore();
   }
 
   // Circles of hyperbolic radius 1, 2, 3… around the centre. In the Poincaré disk a circle of hyperbolic
@@ -1138,6 +1176,7 @@ export class Universe {
     if (this.dim && !this.highlightPath.has(i) && i !== this.focus && i !== this.hover) fade = 1 - SEARCH_FADE * this.dim;
     const w = this.lensWeight[i];
     if (w > 0 && this.branch[i] !== this.lensBranch) fade *= 1 - LENS_DIM * w;
+    if (this.intro !== null) fade *= this.introAlpha[i];
     return fade;
   }
 

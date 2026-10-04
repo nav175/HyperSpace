@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import Intro, { type IntroMode } from './Intro';
 import { pathOf, searchUniverse, type SearchResult } from './search';
 import { Universe, type Mode, type ThemeName, type UNode } from './universe/Universe';
 
@@ -30,6 +31,13 @@ const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the
 const CARD_ROOM = 404; // the card's width plus its margins
 const PHONE_TITLE_BOTTOM = 136; // where the title ends on phones (search bar, then title)
 
+// The opening titles play on ?intro; the inline script in app/layout.tsx marks <html> before first paint.
+function requestedIntro(): IntroMode | null {
+  if (typeof document === 'undefined') return null;
+  const value = document.documentElement.dataset.intro;
+  return value === undefined ? null : value === 'capture' ? 'capture' : 'live';
+}
+
 export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const universeRef = useRef<Universe | null>(null);
@@ -50,6 +58,10 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const [stepped, setStepped] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  // The opening titles (?intro), until they land on the page. They render only once the universe has
+  // loaded, which never happens on the server, so reading the address here can't upset hydration.
+  const [intro, setIntro] = useState<IntroMode | null>(requestedIntro);
+  const introRef = useRef(intro);
   const [introducing, setIntroducing] = useState(true);
   const [theme, setTheme] = useState<ThemeName>('dark');
   const themeRef = useRef<ThemeName>('dark');
@@ -150,6 +162,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     if (!nodes || !canvasRef.current) return;
     const universe = new Universe(canvasRef.current, { fontFamily, theme: themeRef.current });
     universe.loadTree(nodes);
+    if (introRef.current) universe.setIntro(0); // hidden until the titles unfold it
     universe.onSelect(focusNode);
     universe.onHover(setHovered);
     universe.onSettle((node) => settleRef.current(node));
@@ -424,9 +437,10 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
   // The search bar rests as a small pill and opens up when you reach for it. It starts open for a
   // moment after the universe loads, so people see where it is, then tucks itself away.
+  // After the opening titles it's tucked away from the start, as the page they land on shows it.
   useEffect(() => {
     if (!nodes) return;
-    const timer = setTimeout(() => setIntroducing(false), 2600);
+    const timer = setTimeout(() => setIntroducing(false), introRef.current ? 0 : 2600);
     return () => clearTimeout(timer);
   }, [nodes]);
   const searchExpanded = searchHovered || searchFocused || resultsOpen || introducing;
@@ -649,6 +663,18 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         aria-label="Interactive map of AI knowledge on a Poincaré disk"
         onPointerDown={() => setResultsOpen(false)}
       />
+
+      {intro && nodes && (
+        <Intro
+          mode={intro}
+          count={nodes.length}
+          onUnfold={(progress) => universeRef.current?.setIntro(progress)}
+          onDone={() => {
+            introRef.current = null;
+            setIntro(null);
+          }}
+        />
+      )}
 
       {!nodes && (
         <div className="loading" role="status">
