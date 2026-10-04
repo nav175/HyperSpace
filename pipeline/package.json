@@ -1,0 +1,16 @@
+{
+  "name": "hyperspace-pipeline",
+  "private": true,
+  "type": "module",
+  "description": "Hyperspace data pipeline: Wikipedia ingestion, TiDB load, embeddings",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "check": "node check-setup.mjs",
+    "ingest": "node ingest.mjs"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.5"
+  }
+}
