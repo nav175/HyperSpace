@@ -13,6 +13,16 @@ type Connection = {
   status: 'loading' | 'done' | 'error';
 };
 
+type Answer = {
+  question: string;
+  status: 'loading' | 'done' | 'error';
+  text: string; // with [id] citations
+  sources: { id: number; title: string }[];
+};
+
+// Questions go to Gemini; topic names go to search. A "?" or a question word reads as a question.
+const QUESTION = /\?\s*$|^(how|what|why|which|who|when|where|can|could|does|do|is|are|should|will|would|explain|tell me)\b/i;
+
 const ZOOM_STEP = 1.5;
 const VISIBLE_MATCHES = 6; // suggestions listed under the search bar, and framed on Enter
 const WIDE = '(min-width: 761px)'; // the CSS breakpoint: wider screens show the card and suggestions beside the disk
@@ -79,11 +89,18 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     setConnection(null);
     universeRef.current?.highlight(searchLit.current);
   }, []);
+
+  const closeAnswer = useCallback(() => {
+    setAnswer(null);
+    universeRef.current?.highlight(searchLit.current);
+  }, []);
   const root = useMemo(() => nodes?.find((node) => node.parentId === null) ?? null, [nodes]);
 
   // "How are these connected?": the topic waiting for a partner, and the connection being shown.
   const [connectFrom, setConnectFrom] = useState<UNode | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
+  // "Ask Hyperspace": a question answered by Gemini from the topics TiDB finds for it.
+  const [answer, setAnswer] = useState<Answer | null>(null);
   // Picking any topic (map, search, breadcrumbs) completes a pending connection. focusNode has to stay
   // stable (the universe holds on to it), so it reads the pending topic and the handler from refs.
   const connectFromRef = useRef<UNode | null>(null);
@@ -165,8 +182,10 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const suggestionsShown = resultsOpen && result !== null;
   // While you look through new suggestions the card for the last topic steps aside, so the disk keeps
   // its size; it returns when the list closes (Enter swaps in the best match).
-  const connectionShown = connection !== null && !suggestionsShown;
-  const cardShown = selected !== null && !suggestionsShown && !connection;
+  // One panel on the right at a time: an answer, else a connection, else the topic card.
+  const answerShown = answer !== null && !suggestionsShown;
+  const connectionShown = connection !== null && !suggestionsShown && !answer;
+  const cardShown = selected !== null && !suggestionsShown && !connection && !answer;
   useEffect(() => {
     const wide = window.matchMedia(WIDE);
     const update = () => {
@@ -178,7 +197,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       const phoneLens = lensCard && !wide.matches;
       universeRef.current?.setInsets({
         left: leftPanel && wide.matches ? leftPanel + 24 : 0,
-        right: (cardShown || connectionShown) && wide.matches ? CARD_ROOM : 0,
+        right: (cardShown || connectionShown || answerShown) && wide.matches ? CARD_ROOM : 0,
         top: list && !wide.matches ? list.bottom + 8 : phoneLens ? PHONE_TITLE_BOTTOM : 0,
         bottom: phoneLens ? window.innerHeight - lensCard.top + 8 : 0,
       });
@@ -186,7 +205,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     update();
     wide.addEventListener('change', update);
     return () => wide.removeEventListener('change', update);
-  }, [cardShown, connectionShown, suggestionsShown, result, lens]);
+  }, [cardShown, connectionShown, answerShown, suggestionsShown, result, lens]);
 
   const goHome = useCallback(() => {
     if (!root) return;
@@ -274,6 +293,11 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     e.preventDefault();
     const text = query.trim();
     if (!text || !nodes) return;
+    // A question, unless you've stepped to a suggestion: ask Gemini instead of searching.
+    if (text.endsWith('?') && !stepped) {
+      ask(text);
+      return;
+    }
     if (result?.query === text) {
       const match = result.matches[activeIndex];
       if (stepped && match) chooseMatch(match.id);
@@ -326,6 +350,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         if (resultsOpen) setResultsOpen(false);
         else if (typing) inputRef.current?.blur();
         else if (connectFrom) setConnectFrom(null);
+        else if (answer) closeAnswer();
         else if (connection) closeConnection();
         else setSelected(null);
         return;
@@ -343,7 +368,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goHome, mode, resultsOpen, setMode, toggleTheme, connectFrom, connection, closeConnection]);
+  }, [goHome, mode, resultsOpen, setMode, toggleTheme, connectFrom, connection, closeConnection, answer, closeAnswer]);
 
   // Expand: Gemini picks related Wikipedia topics to grow under this one (POST /api/expand). The new
   // branches grow out of the node and light up for a moment, then any search highlight comes back.
@@ -384,6 +409,49 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     } finally {
       setGrowing(null);
     }
+  }
+
+  // Ask Hyperspace: TiDB finds the topics for the question, Gemini answers from them and cites them.
+  // The cited topics light up and the camera frames them.
+  function ask(question: string) {
+    setResultsOpen(false);
+    inputRef.current?.blur();
+    setConnectFrom(null);
+    setConnection(null);
+    setExplored(true);
+    setAnswer({ question, status: 'loading', text: '', sources: [] });
+    const same = (a: Answer | null) => a !== null && a.question === question;
+    fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      signal: AbortSignal.timeout(25_000),
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<{ answer: string; sources: Answer['sources'] }>) : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then(({ answer: text, sources }) => {
+        setAnswer((a) => (same(a) ? { question, status: 'done', text, sources } : a));
+        const ids = sources.map((source) => source.id).filter((id) => byId.has(id));
+        if (ids.length) {
+          universeRef.current?.highlight(ids);
+          universeRef.current?.flyToAll(ids, ids[0]);
+        }
+      })
+      .catch(() => setAnswer((a) => (same(a) ? { ...a!, status: 'error' } : a)));
+  }
+
+  // The answer with its [id] citations turned into buttons that fly to the topic.
+  function renderAnswer(a: Answer) {
+    const titles = new Map(a.sources.map((source) => [source.id, source.title]));
+    return a.text.split(/(\[\d+\])/g).map((part, k) => {
+      const id = Number(part.match(/^\[(\d+)\]$/)?.[1]);
+      if (!id) return part;
+      const title = titles.get(id) ?? byId.get(id)?.title;
+      return title ? (
+        <button key={k} className="cite" onClick={() => byId.get(id) && focusNode(byId.get(id)!)} title={`Go to ${title}`}>
+          {title}
+        </button>
+      ) : null;
+    });
   }
 
   // Show how two topics connect: the camera travels the tree path between them (up to the field they
@@ -500,6 +568,17 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
       {suggestionsShown && (
         <div className="results" role="listbox" id="search-results" ref={resultsRef} aria-label={`Matches for ${result.query}`}>
+          {QUESTION.test(result.query) && (
+            <button className="result ask-row" onMouseDown={(e) => e.preventDefault()} onClick={() => ask(result.query)}>
+              <span className="result-title">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5" />
+                </svg>
+                Ask Gemini
+              </span>
+              <span className="result-path">Answer “{result.query}” from the map, with sources</span>
+            </button>
+          )}
           {visibleMatches.length > 0 && <p className="results-head">Matches for “{result.query}”</p>}
           {visibleMatches.length ? (
             visibleMatches.map((match, index) => (
@@ -602,6 +681,35 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
           </span>
           <button onClick={() => setConnectFrom(null)}>Cancel</button>
         </div>
+      )}
+
+      {answerShown && (
+        <aside className="card answer-card" key={answer.question}>
+          <button className="card-close" onClick={closeAnswer} aria-label="Close">
+            ×
+          </button>
+          <p className="card-meta">Asked Gemini</p>
+          <h2>{answer.question}</h2>
+          <p className={answer.status === 'loading' ? 'card-summary thinking' : 'card-summary'}>
+            {answer.status === 'loading'
+              ? 'Finding the topics with TiDB, then asking Gemini…'
+              : answer.status === 'error'
+                ? "Couldn't reach Gemini just now. Try again in a moment."
+                : renderAnswer(answer)}
+          </p>
+          {answer.status === 'done' && answer.sources.length > 0 && (
+            <div className="sources">
+              <p className="grow-note">Sources on the map</p>
+              <div className="source-chips">
+                {answer.sources.map((source) => (
+                  <button key={source.id} onClick={() => byId.get(source.id) && focusNode(byId.get(source.id)!)}>
+                    {source.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
       )}
 
       {connectionShown && (
