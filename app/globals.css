@@ -8,10 +8,29 @@
   --glass-strong: rgba(28, 32, 48, 0.78);
   --hairline: rgba(255, 255, 255, 0.09);
   --accent: #0a84ff;
+  --fill: rgba(255, 255, 255, 0.08);
+  --fill-strong: rgba(255, 255, 255, 0.14);
+  --shadow: rgba(0, 0, 0, 0.35);
   --radius: 18px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', var(--font-inter), 'Segoe UI', system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', var(--font-inter), 'Segoe UI', system-ui, sans-serif;
   color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #e3e8f1;
+  --bg-glow: #f7f8fb;
+  --text: #1d1d1f;
+  --text-2: rgba(29, 29, 31, 0.68);
+  --text-3: rgba(29, 29, 31, 0.45);
+  --glass: rgba(255, 255, 255, 0.74);
+  --glass-strong: rgba(255, 255, 255, 0.9);
+  --hairline: rgba(15, 23, 42, 0.07);
+  --accent: #0071e3;
+  --fill: rgba(15, 23, 42, 0.05);
+  --fill-strong: rgba(15, 23, 42, 0.08);
+  --shadow: rgba(40, 60, 120, 0.12);
+  color-scheme: light;
 }
 
 * {
@@ -27,6 +46,7 @@ body {
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  transition: background 0.4s ease, color 0.4s ease;
 }
 
 button {
@@ -89,34 +109,53 @@ button {
   color: var(--text-2);
 }
 
-/* Search, top centre */
+/* Search, top centre. Rests as a compact pill and springs open on hover or focus. */
 .search {
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
   position: absolute;
-  top: 22px;
+  top: 24px;
   left: 50%;
-  width: min(520px, calc(100vw - 32px));
+  width: 200px;
   transform: translateX(-50%);
   z-index: 3;
+  transition: width 0.55s var(--spring), top 0.55s var(--spring);
+}
+
+.search.expanded {
+  top: 22px;
+  width: min(520px, calc(100vw - 32px));
 }
 
 .search-field {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 46px;
-  padding: 0 14px 0 16px;
+  height: 40px;
+  padding: 0 12px 0 14px;
   border-radius: 999px;
   background: var(--glass);
   border: 1px solid var(--hairline);
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 8px 28px var(--shadow);
+  transition: height 0.55s var(--spring), padding 0.55s var(--spring), border-color 0.2s ease,
+    box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.search:not(.expanded) .search-field {
+  background: var(--glass);
+  cursor: text;
+}
+
+.search.expanded .search-field {
+  height: 46px;
+  padding: 0 14px 0 16px;
+  box-shadow: 0 12px 40px var(--shadow);
 }
 
 .search-field:focus-within {
   border-color: rgba(10, 132, 255, 0.55);
-  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16), 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.16), 0 12px 40px var(--shadow);
 }
 
 .search-field svg {
@@ -147,6 +186,11 @@ button {
 
 .search-field input::placeholder {
   color: var(--text-3);
+  transition: color 0.3s ease;
+}
+
+.search-field input {
+  text-overflow: ellipsis;
 }
 
 .search-field kbd {
@@ -162,7 +206,7 @@ button {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--fill-strong);
   color: var(--text-2);
   font-size: 15px;
   line-height: 1;
@@ -176,7 +220,7 @@ button {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(28px) saturate(160%);
   -webkit-backdrop-filter: blur(28px) saturate(160%);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 50px var(--shadow);
   animation: rise 0.18s ease-out;
 }
 
@@ -190,9 +234,9 @@ button {
   text-align: left;
 }
 
-.result:hover,
-.result:focus-visible {
-  background: rgba(255, 255, 255, 0.07);
+.result:focus-visible,
+.result.active {
+  background: var(--fill);
   outline: none;
 }
 
@@ -221,11 +265,55 @@ button {
   font-size: 11.5px;
 }
 
-/* Geometry toggle, top right */
-.modes {
+/* Toolbar, top right: theme button and geometry toggle */
+.toolbar {
   position: absolute;
   top: 28px;
   right: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--glass);
+  border: 1px solid var(--hairline);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--glass-strong);
+}
+
+.theme-toggle:active {
+  transform: scale(0.92);
+}
+
+.theme-toggle svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: var(--text-2);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  animation: spin-in 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes spin-in {
+  from {
+    opacity: 0;
+    transform: rotate(-60deg) scale(0.7);
+  }
+}
+
+.modes {
   display: flex;
   padding: 3px;
   border-radius: 999px;
@@ -244,7 +332,7 @@ button {
 }
 
 .modes button.active {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--fill-strong);
   color: var(--text);
 }
 
@@ -261,7 +349,7 @@ button {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(28px) saturate(170%);
   -webkit-backdrop-filter: blur(28px) saturate(170%);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 24px 60px var(--shadow);
   animation: slide-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 2;
 }
@@ -273,7 +361,7 @@ button {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--fill);
   color: var(--text-2);
   font-size: 16px;
   line-height: 1;
@@ -375,44 +463,62 @@ button {
   opacity: 0;
 }
 
-.home {
+/* View controls, bottom right: zoom in, zoom out, back to the centre */
+.controls {
   position: absolute;
   right: 32px;
-  bottom: -4px;
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
   background: var(--glass);
   border: 1px solid var(--hairline);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  pointer-events: auto;
-  transition: background 0.2s ease;
+  box-shadow: 0 8px 28px var(--shadow);
 }
 
-.home:hover {
-  background: var(--glass-strong);
+.controls button {
+  width: 40px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  transition: background 0.15s ease;
 }
 
-.home svg {
+.controls button + button {
+  border-top: 1px solid var(--hairline);
+}
+
+.controls button:hover {
+  background: var(--fill);
+}
+
+.controls button:active {
+  background: var(--fill-strong);
+}
+
+.controls svg {
   width: 18px;
   height: 18px;
   fill: none;
   stroke: var(--text-2);
   stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 /* Presentation mode (P) keeps only the universe, search and card. */
 .brand p,
-.modes,
+.toolbar,
+.controls,
 .dock {
   transition: opacity 0.4s ease;
 }
 
 .presenting .brand p,
-.presenting .modes,
+.presenting .toolbar,
+.presenting .controls,
 .presenting .dock {
   opacity: 0;
   pointer-events: none;
@@ -433,11 +539,16 @@ button {
 }
 
 @media (max-width: 760px) {
+  /* No hover on phones, so the search bar stays open. */
+  .search,
+  .search.expanded {
+    width: calc(100vw - 32px);
+  }
   .brand {
     top: 84px;
     left: 18px;
   }
-  .modes {
+  .toolbar {
     top: auto;
     bottom: 22px;
     right: auto;
@@ -454,7 +565,10 @@ button {
     overflow: auto;
     animation: rise 0.25s ease-out;
   }
-  .home {
+  .controls {
     right: 18px;
+  }
+  .hint {
+    display: none;
   }
 }

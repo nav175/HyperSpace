@@ -12,55 +12,116 @@ export type UNode = {
   type: string;
 };
 export type Mode = 'hyperbolic' | 'euclid';
+export type ThemeName = 'dark' | 'light';
 
 type Pt = { x: number; y: number };
+type RGB = [number, number, number];
 type Flight = { start: number; duration: number; from: C; target: C; flatFrom: Pt; flatTo: Pt; zoomFrom: number; zoomTo: number };
 type Morph = { start: number; duration: number; from: number; to: number };
+type ZoomAnimation = { start: number; duration: number; fromScale: number; toScale: number; fromOffset: Pt; toOffset: Pt };
 type Label = { i: number; x: number; y: number; w: number; h: number };
+type Theme = {
+  palette: RGB[]; // branch colours, run around the disk from purple through blue to green
+  root: RGB;
+  accent: string; // search highlights
+  label: string;
+  labelSoft: string;
+  labelSoftAlpha: number;
+  halo: string; // outline that keeps labels readable over edges
+  ink: string; // focus ring and hover ring
+  glow: string;
+  glowAlpha: number;
+  rimAlpha: number;
+  inkBoost: number; // pale lines wash out on a light background, so they are drawn stronger there
+  disk: { fill: string; shadow: string } | null; // a lit surface under the universe, light theme only
+};
 
-// Branch colours run around the disk from purple through blue to green.
-const PALETTE: [number, number, number][] = [
-  [191, 90, 242],
-  [137, 104, 255],
-  [94, 92, 230],
-  [10, 132, 255],
-  [90, 200, 250],
-  [102, 212, 207],
-  [48, 209, 88],
-];
-const ACCENT = '255, 214, 10'; // search highlights
-const ROOT_RGB: [number, number, number] = [245, 245, 247];
+const THEMES: Record<ThemeName, Theme> = {
+  dark: {
+    palette: [
+      [191, 90, 242],
+      [137, 104, 255],
+      [94, 92, 230],
+      [10, 132, 255],
+      [90, 200, 250],
+      [102, 212, 207],
+      [48, 209, 88],
+    ],
+    root: [245, 245, 247],
+    accent: '255, 214, 10',
+    label: '245, 245, 247',
+    labelSoft: '235, 235, 245',
+    labelSoftAlpha: 0.62,
+    halo: '6, 9, 20',
+    ink: '255, 255, 255',
+    glow: '64, 92, 180',
+    glowAlpha: 0.16,
+    rimAlpha: 0.09,
+    inkBoost: 1,
+    disk: null,
+  },
+  // Deeper, richer versions of the same hues, so lines and dots hold up on white.
+  light: {
+    palette: [
+      [142, 58, 200],
+      [104, 70, 226],
+      [64, 74, 206],
+      [0, 102, 214],
+      [0, 128, 178],
+      [0, 136, 124],
+      [30, 140, 70],
+    ],
+    root: [29, 29, 31],
+    accent: '240, 120, 0',
+    label: '29, 29, 31',
+    labelSoft: '72, 72, 80',
+    labelSoftAlpha: 0.78,
+    halo: '255, 255, 255',
+    ink: '29, 29, 31',
+    glow: '0, 113, 227',
+    glowAlpha: 0.05,
+    rimAlpha: 0.1,
+    inkBoost: 1.3,
+    disk: { fill: 'rgba(255, 255, 255, 0.82)', shadow: 'rgba(40, 60, 120, 0.12)' },
+  },
+};
+
 const ALPHA_STEPS = 16;
 const FLAT_ZOOM = 2.4;
 const MAX_LABELS = 56;
+const MIN_MAGNIFY = 0.7;
+const MAX_MAGNIFY = 8;
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export class Universe {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly font: string;
+  private theme: Theme = THEMES.dark;
   private nodes: UNode[] = [];
   private index = new Map<number, number>();
   private parent = new Int32Array(0);
   private isCategory = new Uint8Array(0);
   private branch = new Int32Array(0);
+  private branchPosition: number[] = []; // each branch's place along the palette, 0..1
   private hx = new Float64Array(0); // hyperbolic layout
   private hy = new Float64Array(0);
   private fx = new Float64Array(0); // flat layout, for the Euclid comparison
   private fy = new Float64Array(0);
   private sx = new Float32Array(0); // screen positions this frame
   private sy = new Float32Array(0);
-  private sf = new Float32Array(0); // how much room a node has here: 1 at the centre, 0 at the rim
-  private branchRgb: [number, number, number][] = [];
+  private sf = new Float32Array(0); // how much room a node has on screen: about 1 at the centre, 0 at the rim
+  private branchRgb: RGB[] = [];
   private styleCache = new Map<number, string>();
   private textWidths = new Map<string, number>();
   private labels: Label[] = [];
 
   private center: C = { re: 0, im: 0 };
   private flatCenter: Pt = { x: 0, y: 0 };
-  private zoom = 1;
+  private zoom = 1; // flat-mode zoom on the focused node
   private blend = 0; // 0 hyperbolic, 1 flat
   private focus = -1;
   private hover = -1;
@@ -68,31 +129,47 @@ export class Universe {
   private highlightPath = new Set<number>();
   private flight: Flight | null = null;
   private morph: Morph | null = null;
+  private zoomAnimation: ZoomAnimation | null = null;
   private selectHandler: ((node: UNode) => void) | null = null;
 
   private width = 0;
   private height = 0;
   private dpr = 1;
+  // The resting disk fits the screen. `magnify` scales it like a lens and `offset` moves it, so you can
+  // zoom into any spot; ox, oy and radius are the result, and everything else draws from them.
+  private baseRadius = 0;
+  private baseOx = 0;
+  private baseOy = 0;
+  private magnify = 1;
+  private offset: Pt = { x: 0, y: 0 };
   private radius = 0;
   private ox = 0;
   private oy = 0;
-  private raf = 0;
   private inset = 0; // room kept free on the right, e.g. for the node card
   private targetInset = 0;
+  private raf = 0;
   private pointer: { id: number; x: number; y: number; startX: number; startY: number; dragging: boolean } | null = null;
+  private touches = new Map<number, Pt>();
+  private pinchDistance = 0;
+  private gestureScale = 1;
   private readonly resizeObserver: ResizeObserver;
 
-  constructor(canvas: HTMLCanvasElement, { fontFamily }: { fontFamily: string }) {
+  constructor(canvas: HTMLCanvasElement, { fontFamily, theme = 'dark' }: { fontFamily: string; theme?: ThemeName }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.font = fontFamily;
+    this.theme = THEMES[theme];
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('pointerleave', this.onPointerLeave);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    // Safari reports trackpad pinches as gesture events rather than ctrl+wheel.
+    canvas.addEventListener('gesturestart', this.onGestureStart);
+    canvas.addEventListener('gesturechange', this.onGestureChange);
     this.resize();
   }
 
@@ -142,8 +219,8 @@ export class Universe {
       while (j >= 0 && !branchOfTop.has(j)) j = this.parent[j];
       this.branch[i] = j >= 0 ? branchOfTop.get(j)! : -1;
     });
-    this.branchRgb = tops.map((_, k) => paletteAt(tops.length > 1 ? k / (tops.length - 1) : 0));
-    this.styleCache.clear();
+    this.branchPosition = tops.map((_, k) => (tops.length > 1 ? k / (tops.length - 1) : 0));
+    this.recolor();
 
     this.sx = new Float32Array(n);
     this.sy = new Float32Array(n);
@@ -162,9 +239,10 @@ export class Universe {
     this.focus = i;
     const target = toOrigin({ re: this.hx[i], im: this.hy[i] }, this.center);
     const distance = 2 * Math.atanh(Math.min(Math.hypot(target.re, target.im), 1 - 1e-12));
+    const duration = 650 + 150 * Math.min(distance, 4);
     this.flight = {
       start: performance.now(),
-      duration: 650 + 150 * Math.min(distance, 4),
+      duration,
       from: this.center,
       target,
       flatFrom: { ...this.flatCenter },
@@ -172,6 +250,11 @@ export class Universe {
       zoomFrom: this.zoom,
       zoomTo: this.nodes[i].depth === 0 ? 1 : FLAT_ZOOM,
     };
+    // When zoomed into a spot off to one side, drift back so the destination lands on screen,
+    // keeping any zoom change already under way (e.g. the reset that "back to the centre" starts).
+    if (this.offset.x || this.offset.y) {
+      this.animateView(this.zoomAnimation?.toScale ?? this.magnify, { x: 0, y: 0 }, duration);
+    }
     this.invalidate();
   }
 
@@ -197,6 +280,25 @@ export class Universe {
     this.selectHandler = handler;
   }
 
+  // ── Beyond the contract: zoom, theme, layout ─────────────────────────────────────────
+
+  zoomBy(factor: number) {
+    // Buttons and keys zoom around the middle of the disk.
+    const scale = Math.min(MAX_MAGNIFY, Math.max(MIN_MAGNIFY, this.magnify * factor));
+    const k = scale / this.magnify;
+    this.animateView(scale, { x: this.offset.x * k, y: this.offset.y * k }, 320);
+  }
+
+  resetZoom() {
+    this.animateView(1, { x: 0, y: 0 }, 480);
+  }
+
+  setTheme(name: ThemeName) {
+    this.theme = THEMES[name];
+    this.recolor();
+    this.invalidate();
+  }
+
   // Keep `px` free on the right (the node card); the disk glides over to make room.
   setRightInset(px: number) {
     this.targetInset = px;
@@ -209,8 +311,11 @@ export class Universe {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('pointercancel', this.onPointerUp);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
     this.canvas.removeEventListener('wheel', this.onWheel);
+    this.canvas.removeEventListener('gesturestart', this.onGestureStart);
+    this.canvas.removeEventListener('gesturechange', this.onGestureChange);
   }
 
   // ── Frame loop ───────────────────────────────────────────────────────────────────────
@@ -234,16 +339,26 @@ export class Universe {
       const t = clamp01((now - f.start) / f.duration);
       const e = easeInOut(t);
       this.center = fromOrigin(alongGeodesic(f.target, e), f.from);
-      this.flatCenter = { x: f.flatFrom.x + (f.flatTo.x - f.flatFrom.x) * e, y: f.flatFrom.y + (f.flatTo.y - f.flatFrom.y) * e };
-      this.zoom = f.zoomFrom + (f.zoomTo - f.zoomFrom) * e;
+      this.flatCenter = { x: lerp(f.flatFrom.x, f.flatTo.x, e), y: lerp(f.flatFrom.y, f.flatTo.y, e) };
+      this.zoom = lerp(f.zoomFrom, f.zoomTo, e);
       if (t >= 1) this.flight = null;
       active = true;
     }
     if (this.morph) {
       const m = this.morph;
       const t = clamp01((now - m.start) / m.duration);
-      this.blend = m.from + (m.to - m.from) * easeInOut(t);
+      this.blend = lerp(m.from, m.to, easeInOut(t));
       if (t >= 1) this.morph = null;
+      active = true;
+    }
+    if (this.zoomAnimation) {
+      const z = this.zoomAnimation;
+      const t = clamp01((now - z.start) / z.duration);
+      const e = easeInOut(t);
+      this.magnify = lerp(z.fromScale, z.toScale, e);
+      this.offset = { x: lerp(z.fromOffset.x, z.toOffset.x, e), y: lerp(z.fromOffset.y, z.toOffset.y, e) };
+      this.applyView();
+      if (t >= 1) this.zoomAnimation = null;
       active = true;
     }
     if (this.inset !== this.targetInset) {
@@ -270,9 +385,51 @@ export class Universe {
 
   private layoutViewport() {
     const usable = this.width - this.inset;
-    this.radius = Math.min(usable, this.height) * 0.46;
-    this.ox = usable / 2;
-    this.oy = this.height / 2 + Math.min(24, this.height * 0.02);
+    this.baseRadius = Math.min(usable, this.height) * 0.46;
+    this.baseOx = usable / 2;
+    this.baseOy = this.height / 2 + Math.min(24, this.height * 0.02);
+    this.applyView();
+  }
+
+  private applyView() {
+    this.radius = this.baseRadius * this.magnify;
+    this.ox = this.baseOx + this.offset.x;
+    this.oy = this.baseOy + this.offset.y;
+  }
+
+  // Zoom by `factor` keeping the point (x, y) under the cursor where it is.
+  private zoomAt(factor: number, x: number, y: number) {
+    const scale = Math.min(MAX_MAGNIFY, Math.max(MIN_MAGNIFY, this.magnify * factor));
+    if (scale === this.magnify) return;
+    const k = scale / this.magnify;
+    this.offset = this.clampOffset({ x: x - this.baseOx - (x - this.ox) * k, y: y - this.baseOy - (y - this.oy) * k }, scale);
+    this.magnify = scale;
+    this.zoomAnimation = null;
+    this.applyView();
+    this.invalidate();
+  }
+
+  private animateView(toScale: number, toOffset: Pt, duration: number) {
+    this.zoomAnimation = {
+      start: performance.now(),
+      duration,
+      fromScale: this.magnify,
+      toScale,
+      fromOffset: { ...this.offset },
+      toOffset: this.clampOffset(toOffset, toScale),
+    };
+    this.invalidate();
+  }
+
+  // A zoomed disk may slide around, but never so far that it leaves the screen.
+  private clampOffset(offset: Pt, scale: number): Pt {
+    const limit = Math.max(0, this.baseRadius * (scale - 1));
+    return { x: Math.max(-limit, Math.min(limit, offset.x)), y: Math.max(-limit, Math.min(limit, offset.y)) };
+  }
+
+  private recolor() {
+    this.branchRgb = this.branchPosition.map((t) => paletteAt(this.theme.palette, t));
+    this.styleCache.clear();
   }
 
   // Screen positions for every node: hyperbolic view, flat view, or a blend while morphing.
@@ -299,29 +456,42 @@ export class Universe {
       }
       this.sx[i] = this.ox + x * this.radius;
       this.sy[i] = this.oy + y * this.radius;
-      this.sf[i] = f;
+      // Zooming in gives every node more room on screen, so more of them earn labels.
+      this.sf[i] = Math.min(1, f * this.magnify);
     }
   }
 
   private draw(now: number) {
-    const { ctx } = this;
+    const { ctx, theme } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
     if (!this.nodes.length) return;
     this.project();
     const hyperbolic = 1 - this.blend;
 
-    // The disk itself: a faint glow and a hairline rim.
+    // The disk itself: a faint glow and a hairline rim, on a soft lit surface in the light theme.
     if (hyperbolic > 0.01) {
+      if (theme.disk) {
+        ctx.save();
+        ctx.globalAlpha = hyperbolic;
+        ctx.shadowColor = theme.disk.shadow;
+        ctx.shadowBlur = 70;
+        ctx.shadowOffsetY = 18;
+        ctx.fillStyle = theme.disk.fill;
+        ctx.beginPath();
+        ctx.arc(this.ox, this.oy, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       const glow = ctx.createRadialGradient(this.ox, this.oy, 0, this.ox, this.oy, this.radius);
-      glow.addColorStop(0, `rgba(64, 92, 180, ${0.16 * hyperbolic})`);
-      glow.addColorStop(0.7, `rgba(40, 56, 120, ${0.07 * hyperbolic})`);
-      glow.addColorStop(1, 'rgba(20, 28, 60, 0)');
+      glow.addColorStop(0, `rgba(${theme.glow}, ${theme.glowAlpha * hyperbolic})`);
+      glow.addColorStop(0.7, `rgba(${theme.glow}, ${theme.glowAlpha * 0.45 * hyperbolic})`);
+      glow.addColorStop(1, `rgba(${theme.glow}, 0)`);
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(this.ox, this.oy, this.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.09 * hyperbolic})`;
+      ctx.strokeStyle = `rgba(${theme.ink}, ${theme.rimAlpha * hyperbolic})`;
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -336,7 +506,7 @@ export class Universe {
       if (p < 0) continue;
       const f = this.sf[i];
       if (f < 0.002 || (!onScreen(i) && !onScreen(p))) continue;
-      const alpha = Math.min(0.55, 0.08 + 0.6 * Math.pow(f, 0.85));
+      const alpha = Math.min(0.75, (0.08 + 0.6 * Math.pow(f, 0.85)) * theme.inkBoost);
       const key = this.styleKey(this.branch[i], alpha);
       (edgeGroups.get(key) ?? edgeGroups.set(key, []).get(key)!).push(i);
     }
@@ -350,7 +520,7 @@ export class Universe {
 
     // Branches leading to search matches.
     if (this.highlightPath.size) {
-      ctx.strokeStyle = `rgba(${ACCENT}, 0.75)`;
+      ctx.strokeStyle = `rgba(${theme.accent}, 0.75)`;
       ctx.lineWidth = 1.6;
       ctx.beginPath();
       for (const i of this.highlightPath) if (this.parent[i] >= 0) this.edgePath(i, this.parent[i], curved);
@@ -361,7 +531,7 @@ export class Universe {
     const nodeGroups = new Map<number, number[]>();
     for (let i = 0; i < this.nodes.length; i++) {
       if (!onScreen(i)) continue;
-      const alpha = Math.min(1, 0.32 + 0.9 * Math.pow(this.sf[i], 0.6));
+      const alpha = Math.min(1, (0.32 + 0.9 * Math.pow(this.sf[i], 0.6)) * theme.inkBoost);
       const key = this.styleKey(this.branch[i], alpha);
       (nodeGroups.get(key) ?? nodeGroups.set(key, []).get(key)!).push(i);
     }
@@ -382,11 +552,11 @@ export class Universe {
       for (const i of this.highlighted) {
         if (!onScreen(i)) continue;
         const r = this.nodeRadius(i);
-        ctx.fillStyle = `rgba(${ACCENT}, ${0.18 + 0.12 * pulse})`;
+        ctx.fillStyle = `rgba(${theme.accent}, ${0.18 + 0.12 * pulse})`;
         ctx.beginPath();
         ctx.arc(this.sx[i], this.sy[i], r + 5 + 4 * pulse, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = `rgb(${ACCENT})`;
+        ctx.fillStyle = `rgb(${theme.accent})`;
         ctx.beginPath();
         ctx.arc(this.sx[i], this.sy[i], Math.max(2, r), 0, Math.PI * 2);
         ctx.fill();
@@ -394,7 +564,7 @@ export class Universe {
     }
 
     if (this.hover >= 0 && this.hover !== this.focus) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.strokeStyle = `rgba(${theme.ink}, 0.85)`;
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.arc(this.sx[this.hover], this.sy[this.hover], this.nodeRadius(this.hover) + 4, 0, Math.PI * 2);
@@ -409,11 +579,11 @@ export class Universe {
   private drawReticle() {
     const i = this.focus;
     if (i < 0) return;
-    const { ctx } = this;
+    const { ctx, theme } = this;
     const x = this.sx[i];
     const y = this.sy[i];
     const r = this.nodeRadius(i) + 6;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.strokeStyle = `rgba(${theme.ink}, 0.92)`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -421,7 +591,7 @@ export class Universe {
     const s = r + 9;
     const l = 6;
     ctx.lineWidth = 1.2;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.strokeStyle = `rgba(${theme.ink}, 0.6)`;
     ctx.beginPath();
     for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
       ctx.moveTo(x + dx * s, y + dy * (s - l));
@@ -433,7 +603,7 @@ export class Universe {
 
   // Labels go to the nodes with the most room, biggest first, skipping any that would collide.
   private drawLabels() {
-    const { ctx } = this;
+    const { ctx, theme } = this;
     const candidates: number[] = [];
     for (let i = 0; i < this.nodes.length; i++) {
       if (this.sf[i] > 0.14 || i === this.focus || this.highlighted.has(i) || i === this.hover) candidates.push(i);
@@ -467,14 +637,14 @@ export class Universe {
       this.labels.push(box);
 
       const fade = focused || this.highlighted.has(i) || i === this.hover ? 1 : clamp01((f - 0.14) / 0.3);
-      ctx.strokeStyle = `rgba(6, 9, 20, ${0.85 * fade})`;
+      ctx.strokeStyle = `rgba(${theme.halo}, ${0.85 * fade})`;
       ctx.lineWidth = 3;
       ctx.strokeText(text, x, y);
       ctx.fillStyle = this.highlighted.has(i)
-        ? `rgba(${ACCENT}, ${fade})`
+        ? `rgba(${theme.accent}, ${fade})`
         : category || focused
-          ? `rgba(245, 245, 247, ${0.95 * fade})`
-          : `rgba(235, 235, 245, ${0.62 * fade})`;
+          ? `rgba(${theme.label}, ${0.95 * fade})`
+          : `rgba(${theme.labelSoft}, ${theme.labelSoftAlpha * fade})`;
       ctx.fillText(text, x, y);
     }
     ctx.letterSpacing = '0px';
@@ -529,7 +699,7 @@ export class Universe {
     if (!style) {
       const branch = Math.floor(key / ALPHA_STEPS) - 1;
       const alpha = (key % ALPHA_STEPS) / (ALPHA_STEPS - 1);
-      const [r, g, b] = branch >= 0 ? this.branchRgb[branch] : ROOT_RGB;
+      const [r, g, b] = branch >= 0 ? this.branchRgb[branch] : this.theme.root;
       style = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
       this.styleCache.set(key, style);
     }
@@ -566,7 +736,7 @@ export class Universe {
     return best;
   }
 
-  private local(e: PointerEvent | WheelEvent): Pt {
+  private local(e: { clientX: number; clientY: number }): Pt {
     const rect = this.canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
@@ -597,13 +767,29 @@ export class Universe {
   }
 
   private onPointerDown = (e: PointerEvent) => {
-    const { x, y } = this.local(e);
-    this.pointer = { id: e.pointerId, x, y, startX: x, startY: y, dragging: false };
+    const point = this.local(e);
+    this.touches.set(e.pointerId, point);
     this.canvas.setPointerCapture(e.pointerId);
+    if (this.touches.size === 2) {
+      // A second finger turns a drag into a pinch.
+      const [a, b] = [...this.touches.values()];
+      this.pinchDistance = Math.hypot(a.x - b.x, a.y - b.y);
+      this.pointer = null;
+      return;
+    }
+    this.pointer = { id: e.pointerId, x: point.x, y: point.y, startX: point.x, startY: point.y, dragging: false };
   };
 
   private onPointerMove = (e: PointerEvent) => {
     const { x, y } = this.local(e);
+    if (this.touches.has(e.pointerId)) this.touches.set(e.pointerId, { x, y });
+    if (this.touches.size === 2) {
+      const [a, b] = [...this.touches.values()];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (this.pinchDistance > 0) this.zoomAt(distance / this.pinchDistance, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      this.pinchDistance = distance;
+      return;
+    }
     const p = this.pointer;
     if (p && p.id === e.pointerId) {
       if (!p.dragging && Math.hypot(x - p.startX, y - p.startY) > 4) {
@@ -623,11 +809,12 @@ export class Universe {
     }
   };
 
-  private onPointerUp = () => {
+  private onPointerUp = (e: PointerEvent) => {
+    this.touches.delete(e.pointerId);
     const p = this.pointer;
     this.pointer = null;
     this.canvas.style.cursor = this.hover >= 0 ? 'pointer' : 'grab';
-    if (!p || p.dragging) return;
+    if (!p || p.dragging || p.id !== e.pointerId) return;
     const i = this.nodeAt(p.startX, p.startY);
     if (i >= 0) this.selectHandler?.(this.nodes[i]);
   };
@@ -639,19 +826,39 @@ export class Universe {
     }
   };
 
-  // Trackpad scrolling glides across the plane too.
+  // Two-finger scrolling glides across the plane. A trackpad pinch is a separate gesture that the
+  // browser reports as ctrl+wheel, so it can zoom around the cursor without taking over scrolling.
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    this.pan(this.ox, this.oy, this.ox - e.deltaX * 0.5, this.oy - e.deltaY * 0.5);
+    const lines = e.deltaMode === 1 ? 16 : 1; // some mice scroll in lines rather than pixels
+    if (e.ctrlKey) {
+      const { x, y } = this.local(e);
+      this.zoomAt(Math.exp(-e.deltaY * lines * 0.012), x, y);
+      return;
+    }
+    this.pan(this.ox, this.oy, this.ox - e.deltaX * lines * 0.5, this.oy - e.deltaY * lines * 0.5);
+  };
+
+  private onGestureStart = (e: Event) => {
+    e.preventDefault();
+    this.gestureScale = 1;
+  };
+
+  private onGestureChange = (e: Event) => {
+    e.preventDefault();
+    const gesture = e as Event & { scale: number; clientX: number; clientY: number };
+    const { x, y } = this.local(gesture);
+    this.zoomAt(gesture.scale / this.gestureScale, x, y);
+    this.gestureScale = gesture.scale;
   };
 }
 
-function paletteAt(t: number): [number, number, number] {
-  const scaled = t * (PALETTE.length - 1);
-  const k = Math.min(PALETTE.length - 2, Math.floor(scaled));
+function paletteAt(palette: RGB[], t: number): RGB {
+  const scaled = t * (palette.length - 1);
+  const k = Math.min(palette.length - 2, Math.floor(scaled));
   const u = scaled - k;
-  const [a, b] = [PALETTE[k], PALETTE[k + 1]];
-  return [0, 1, 2].map((c) => Math.round(a[c] + (b[c] - a[c]) * u)) as [number, number, number];
+  const [a, b] = [palette[k], palette[k + 1]];
+  return [0, 1, 2].map((c) => Math.round(a[c] + (b[c] - a[c]) * u)) as RGB;
 }
 
 function overlaps(a: Omit<Label, 'i'>, b: Omit<Label, 'i'>) {

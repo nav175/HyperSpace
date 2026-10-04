@@ -12,9 +12,15 @@ export const viewport: Viewport = {
   themeColor: '#04060d',
 };
 
+// Applies the saved theme before the first paint, so a light-theme visitor never sees a dark flash.
+const applySavedTheme = `try{document.documentElement.dataset.theme=localStorage.getItem('hyperspace-theme')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: applySavedTheme }} />
+      </head>
       <body>{children}</body>
     </html>
   );

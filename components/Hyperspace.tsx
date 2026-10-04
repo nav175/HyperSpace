@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { pathOf, searchUniverse, type SearchResult } from './search';
-import { Universe, type Mode, type UNode } from './universe/Universe';
+import { Universe, type Mode, type ThemeName, type UNode } from './universe/Universe';
+
+const ZOOM_STEP = 1.5;
 
 export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,9 +15,15 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
   const [selected, setSelected] = useState<UNode | null>(null);
   const [mode, setModeState] = useState<Mode>('hyperbolic');
   const [query, setQuery] = useState('');
-  const [result, setResult] = useState<SearchResult | null>(null);
+  const [result, setResult] = useState<(SearchResult & { query: string }) | null>(null);
   const [searching, setSearching] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [searchHovered, setSearchHovered] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [introducing, setIntroducing] = useState(true);
+  const [theme, setTheme] = useState<ThemeName>('dark');
+  const themeRef = useRef<ThemeName>('dark');
   const [presenting, setPresenting] = useState(false);
   const [explored, setExplored] = useState(false);
 
@@ -50,7 +58,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
   useEffect(() => {
     if (!nodes || !canvasRef.current) return;
-    const universe = new Universe(canvasRef.current, { fontFamily });
+    const universe = new Universe(canvasRef.current, { fontFamily, theme: themeRef.current });
     universe.loadTree(nodes);
     universe.onSelect(focusNode);
     universeRef.current = universe;
@@ -60,6 +68,29 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     };
   }, [nodes, fontFamily, focusNode]);
 
+  // The layout's inline script already applied the saved theme to <html> before the first paint.
+  useEffect(() => {
+    if (document.documentElement.dataset.theme === 'light') setTheme('light');
+  }, []);
+
+  useEffect(() => {
+    themeRef.current = theme;
+    universeRef.current?.setTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => {
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try {
+        localStorage.setItem('hyperspace-theme', next);
+      } catch {
+        // Private browsing can block storage; the theme still applies for this visit.
+      }
+      return next;
+    });
+  }, []);
+
   // Make room for the card on wide screens; on phones it slides up from the bottom instead.
   useEffect(() => {
     universeRef.current?.setRightInset(selected && window.innerWidth > 760 ? 404 : 0);
@@ -67,6 +98,7 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
 
   const goHome = useCallback(() => {
     if (!root) return;
+    universeRef.current?.resetZoom();
     universeRef.current?.flyTo(root.id);
     setSelected(null);
   }, [root]);
@@ -83,19 +115,82 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
     universeRef.current?.highlight([]);
   }, []);
 
-  async function runSearch(e?: FormEvent) {
-    e?.preventDefault();
+  // Suggestions follow the text as you type: a short pause, then search. Each keystroke cancels the
+  // previous request, so a slow answer for old text can never replace the current suggestions.
+  // Matches light up in the universe right away; flying waits for Enter or a click.
+  useEffect(() => {
+    const text = query.trim();
+    if (!nodes) return;
+    if (!text) {
+      setResult(null);
+      setSearching(false);
+      universeRef.current?.highlight([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const found = await searchUniverse(text, nodes, byId, controller.signal);
+      if (!found) return;
+      setSearching(false);
+      setResult({ ...found, query: text });
+      setActiveIndex(0);
+      if (document.activeElement === inputRef.current) setResultsOpen(true);
+      universeRef.current?.highlight(found.matches.map((match) => match.id));
+    }, 220);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, nodes, byId]);
+
+  function chooseMatch(id: number) {
+    const node = byId.get(id);
+    if (!node) return;
+    focusNode(node);
+    setResultsOpen(false);
+    inputRef.current?.blur();
+  }
+
+  // Enter flies to the highlighted suggestion. If the suggestions are still catching up with the
+  // text, search right away instead of waiting for the pause.
+  async function submitSearch(e: FormEvent) {
+    e.preventDefault();
     const text = query.trim();
     if (!text || !nodes) return;
+    if (result?.query === text) {
+      const match = result.matches[activeIndex] ?? result.matches[0];
+      if (match) chooseMatch(match.id);
+      return;
+    }
     setSearching(true);
     const found = await searchUniverse(text, nodes, byId);
     setSearching(false);
-    setResult(found);
-    setResultsOpen(true);
+    if (!found) return;
+    setResult({ ...found, query: text });
     universeRef.current?.highlight(found.matches.map((match) => match.id));
-    const focus = found.focusNodeId === null ? undefined : byId.get(found.focusNodeId);
-    if (focus) focusNode(focus);
+    if (found.focusNodeId !== null) chooseMatch(found.focusNodeId);
   }
+
+  const visibleMatches = result?.matches.slice(0, 6) ?? [];
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!resultsOpen || !visibleMatches.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex((index) => (index + step + visibleMatches.length) % visibleMatches.length);
+    }
+  }
+
+  // The search bar rests as a small pill and opens up when you reach for it. It starts open for a
+  // moment after the universe loads, so people see where it is, then tucks itself away.
+  useEffect(() => {
+    if (!nodes) return;
+    const timer = setTimeout(() => setIntroducing(false), 2600);
+    return () => clearTimeout(timer);
+  }, [nodes]);
+  const searchExpanded = searchHovered || searchFocused || resultsOpen || introducing;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -116,10 +211,14 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       if (key === 'h') goHome();
       if (key === 'p') setPresenting((value) => !value);
       if (key === 'f') setMode(mode === 'hyperbolic' ? 'euclid' : 'hyperbolic');
+      if (key === 't') toggleTheme();
+      if (key === '+' || key === '=') universeRef.current?.zoomBy(ZOOM_STEP);
+      if (key === '-' || key === '_') universeRef.current?.zoomBy(1 / ZOOM_STEP);
+      if (key === '0') universeRef.current?.resetZoom();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goHome, mode, resultsOpen, setMode]);
+  }, [goHome, mode, resultsOpen, setMode, toggleTheme]);
 
   const path = selected ? pathOf(selected.id, byId).map((id) => byId.get(id)!) : [];
   const breadcrumb = (id: number) =>
@@ -148,8 +247,12 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         <p>{nodes ? `${nodes.length.toLocaleString()} AI topics from Wikipedia` : 'A living map of knowledge'}</p>
       </header>
 
-      <div className="search">
-        <form onSubmit={runSearch} className={searching ? 'search-field busy' : 'search-field'}>
+      <div
+        className={searchExpanded ? 'search expanded' : 'search'}
+        onMouseEnter={() => setSearchHovered(true)}
+        onMouseLeave={() => setSearchHovered(false)}
+      >
+        <form onSubmit={submitSearch} className={searching ? 'search-field busy' : 'search-field'}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
@@ -158,10 +261,18 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => result && setResultsOpen(true)}
-            placeholder="Search by meaning: “AI that understands images”"
+            onKeyDown={onSearchKeyDown}
+            onFocus={() => {
+              setSearchFocused(true);
+              if (result) setResultsOpen(true);
+            }}
+            onBlur={() => setSearchFocused(false)}
+            placeholder={searchExpanded ? 'Search by meaning: “AI that understands images”' : 'Search'}
             aria-label="Search the universe"
+            aria-expanded={resultsOpen}
+            aria-controls="search-results"
             spellCheck={false}
+            autoComplete="off"
           />
           {query ? (
             <button type="button" className="clear" onClick={clearSearch} aria-label="Clear search">
@@ -173,25 +284,23 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         </form>
 
         {resultsOpen && result && (
-          <div className="results" role="listbox">
-            {result.matches.length ? (
-              result.matches.slice(0, 6).map((match) => {
-                const node = byId.get(match.id);
-                if (!node) return null;
-                return (
-                  <button
-                    key={match.id}
-                    className="result"
-                    onClick={() => {
-                      focusNode(node);
-                      setResultsOpen(false);
-                    }}
-                  >
-                    <span className="result-title">{match.title}</span>
-                    <span className="result-path">{breadcrumb(match.id) || 'Artificial intelligence'}</span>
-                  </button>
-                );
-              })
+          <div className="results" role="listbox" id="search-results">
+            {visibleMatches.length ? (
+              visibleMatches.map((match, index) => (
+                <button
+                  key={match.id}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className={index === activeIndex ? 'result active' : 'result'}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  // Keep focus in the field until the click lands, so the bar doesn't collapse under the cursor.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => chooseMatch(match.id)}
+                >
+                  <span className="result-title">{match.title}</span>
+                  <span className="result-path">{breadcrumb(match.id) || 'Artificial intelligence'}</span>
+                </button>
+              ))
             ) : (
               <p className="results-empty">Nothing matches that yet.</p>
             )}
@@ -200,13 +309,32 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
         )}
       </div>
 
-      <div className="modes" role="group" aria-label="Geometry">
-        <button className={mode === 'hyperbolic' ? 'active' : ''} onClick={() => setMode('hyperbolic')}>
-          Hyperbolic
+      <div className="toolbar">
+        <button
+          className="theme-toggle"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={theme === 'dark' ? 'Light theme (T)' : 'Dark theme (T)'}
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.2" />
+              <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z" />
+            </svg>
+          )}
         </button>
-        <button className={mode === 'euclid' ? 'active' : ''} onClick={() => setMode('euclid')}>
-          Flat
-        </button>
+        <div className="modes" role="group" aria-label="Geometry">
+          <button className={mode === 'hyperbolic' ? 'active' : ''} onClick={() => setMode('hyperbolic')}>
+            Hyperbolic
+          </button>
+          <button className={mode === 'euclid' ? 'active' : ''} onClick={() => setMode('euclid')}>
+            Flat
+          </button>
+        </div>
       </div>
 
       {selected && (
@@ -238,14 +366,27 @@ export default function Hyperspace({ fontFamily }: { fontFamily: string }) {
       )}
 
       <footer className="dock">
-        <p className={explored ? 'hint hidden' : 'hint'}>Click any topic to bring it to the centre · Drag to explore</p>
-        <button className="home" onClick={goHome} aria-label="Back to the centre" title="Back to the centre (H)">
+        <p className={explored ? 'hint hidden' : 'hint'}>Click a topic to bring it to the centre · Scroll or drag to explore · Pinch to zoom</p>
+      </footer>
+
+      <div className="controls" role="group" aria-label="View">
+        <button onClick={() => universeRef.current?.zoomBy(ZOOM_STEP)} aria-label="Zoom in" title="Zoom in (+)">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="8" />
+            <path d="M12 6v12M6 12h12" />
+          </svg>
+        </button>
+        <button onClick={() => universeRef.current?.zoomBy(1 / ZOOM_STEP)} aria-label="Zoom out" title="Zoom out (−)">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 12h12" />
+          </svg>
+        </button>
+        <button onClick={goHome} aria-label="Back to the centre" title="Back to the centre (H)">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="7.5" />
             <circle cx="12" cy="12" r="2" />
           </svg>
         </button>
-      </footer>
+      </div>
     </main>
   );
 }

@@ -7,18 +7,26 @@ const STOP_WORDS = new Set(['the', 'and', 'for', 'how', 'what', 'that', 'with', 
 
 // POST /api/search (README contract). If the API is unreachable, e.g. in an offline demo, fall back
 // to keyword search over the universe already loaded in the browser, in the same response shape.
-export async function searchUniverse(query: string, nodes: UNode[], byId: Map<number, UNode>): Promise<SearchResult> {
+// Returns null when `signal` aborts, i.e. a newer query has replaced this one.
+export async function searchUniverse(
+  query: string,
+  nodes: UNode[],
+  byId: Map<number, UNode>,
+  signal?: AbortSignal
+): Promise<SearchResult | null> {
   try {
+    const timeout = AbortSignal.timeout(5000);
     const res = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
-      signal: AbortSignal.timeout(5000),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     if (res.ok) return (await res.json()) as SearchResult;
   } catch {
-    // fall through to the offline search
+    // fall through to the offline search, unless this query was superseded
   }
+  if (signal?.aborted) return null;
   return { ...keywordSearch(query, nodes, byId), offline: true };
 }
 
