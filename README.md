@@ -2,7 +2,7 @@
 
 ### Explore knowledge by bending space
 
-Hyperspace turns 2,475 Wikipedia topics about artificial intelligence into a universe you explore on a **Poincaré disk**. Click any topic and the whole map transforms around it: what you focus on grows into the readable centre while every other branch stays in view, compressed toward the rim.
+Hyperspace turns 4,503 Wikipedia topics about artificial intelligence into a universe you explore on a **Poincaré disk**. Click any topic and the whole map transforms around it: what you focus on grows into the readable centre while every other branch stays in view, compressed toward the rim.
 
 Built for **StormHacks 2026** by **Karn, Navjot and Dilpreet**.
 
@@ -56,7 +56,7 @@ Wikipedia ─► pipeline/ingest.mjs ─► nodes.json ─► pipeline/load.mjs 
                                         └─ /api/expand, /api/connect, /api/ask ─► Gemini
 ```
 
-**Data.** `pipeline/ingest.mjs` crawls Wikipedia's category graph breadth-first from *Category:Artificial intelligence*, so each page keeps its shallowest parent and cycles are broken. It filters out people, organisations, media, events, lists and maintenance categories, and prunes by article length: 249 categories and 2,226 articles, up to 4 levels deep. `load.mjs` writes them to TiDB with root-to-node paths. `embed.mjs` fills a `VECTOR(1024)` column inside TiDB with its built-in `EMBED_TEXT` model, embedding each topic with its breadcrumb so short titles keep their context.
+**Data.** `pipeline/ingest.mjs` crawls Wikipedia's category graph breadth-first from *Category:Artificial intelligence*, so each page keeps its shallowest parent and cycles are broken. It filters out people, organisations, media, events, lists and maintenance categories, and prunes by article length: 319 categories and 4,184 articles across 50 fields, up to 4 levels deep. `load.mjs` writes them to TiDB with root-to-node paths. `embed.mjs` fills a `VECTOR(1024)` column inside TiDB with its built-in `EMBED_TEXT` model, embedding each topic with its breadcrumb so short titles keep their context.
 
 **Layout and rendering.** [`geometry.ts`](components/universe/geometry.ts) lays the tree out in the Poincaré disk (Lamping and Rao): each node fans its children inside a wedge of its own local frame, sized by subtree weight. Recentering applies the disk automorphism z ↦ (z − a) / (1 − āz), and flights follow geodesics. [`Universe.ts`](components/universe/Universe.ts) draws everything on a canvas: edges as circular arcs that meet the rim at right angles, labels placed by available room, and growth animated along geodesics. It only redraws when something changes.
 

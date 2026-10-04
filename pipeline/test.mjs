@@ -50,8 +50,8 @@ describe('nodes.json', () => {
     }
   });
 
-  test('has 1,500–3,000 nodes', () => {
-    assert.ok(nodes.length >= 1500 && nodes.length <= 3000, `${nodes.length} nodes`);
+  test('has 1,500–12,000 nodes', () => {
+    assert.ok(nodes.length >= 1500 && nodes.length <= 12000, `${nodes.length} nodes`);
     assert.equal(meta.nodeCount, nodes.length);
   });
 

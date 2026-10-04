@@ -1,8 +1,8 @@
 {
-  "datasetVersion": "wiki-artificial-intelligence-202610040207",
+  "datasetVersion": "wiki-artificial-intelligence-202610041056",
   "root": "Artificial intelligence",
-  "extra": "Machine learning,Computer vision,Natural language processing,Robotics",
+  "extra": "Machine learning,Computer vision,Natural language processing,Robotics,Data mining,Speech recognition",
   "depth": 4,
-  "nodeCount": 2475,
-  "generatedAt": "2026-10-04T02:07:28.809Z"
+  "nodeCount": 4503,
+  "generatedAt": "2026-10-04T10:56:08.346Z"
 }
