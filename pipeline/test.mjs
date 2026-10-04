@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
-import { getCachedExpansion, getNode, saveExpansion } from './lib/api.mjs';
+import { getCachedExpansion, getNode, saveExpansion, searchNodes } from './lib/api.mjs';
 import { closePool, connect, pool } from './lib/db.mjs';
 import { EMBED_DIM, embedQuery } from './lib/embedding.mjs';
 
@@ -175,6 +175,22 @@ describe('API functions (lib/api.mjs)', () => {
       path.map((id) => byId.get(id).title),
       ['Artificial intelligence', 'Computer vision', 'Vision transformer']
     );
+  });
+
+  test('searchNodes returns the contract shape and finds the right region', async () => {
+    const result = await searchNodes('robot that looks like a person');
+    assert.ok(result.matches.length > 0);
+    for (const match of result.matches) {
+      assert.deepEqual(Object.keys(match).sort(), ['id', 'path', 'score', 'title']);
+      assert.equal(match.path.at(-1), match.id);
+    }
+    assert.equal(result.focusNodeId, result.matches[0].id);
+    const humanoid = byTitle('Humanoid robots').id;
+    assert.ok(
+      result.matches.slice(0, 5).some((match) => match.path.includes(humanoid)),
+      result.matches.map((match) => match.title).join(', ')
+    );
+    assert.deepEqual(await searchNodes('   '), { matches: [], focusNodeId: null });
   });
 
   test('getNode returns null for unknown or malformed ids', async () => {
