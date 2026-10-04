@@ -25,8 +25,15 @@ export async function embedBatch(texts, { timeoutMs = 30_000 } = {}) {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
-    const error = new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const body = await res.text();
+    const error = new Error(`Gemini ${res.status}: ${body.slice(0, 300)}`);
     error.status = res.status;
+    // Quota errors carry RetryInfo / QuotaFailure details saying how long to wait and which limit hit.
+    try {
+      error.details = JSON.parse(body).error?.details ?? [];
+    } catch {
+      error.details = [];
+    }
     throw error;
   }
   const { embeddings } = await res.json();
